@@ -1,4 +1,5 @@
 import Foundation
+import simd
 import UCFormats
 import UCRender
 
@@ -148,30 +149,87 @@ public struct TitleMenu: Sendable {
     }
 
     /// One game frame with this frame's pad state.
+    /// The item the player confirmed (Cross / Start, or a second tap on the selected item).
+    /// What each item starts is not reimplemented yet; the flow reads and clears this.
+    public var confirmed: Int?
+
     public mutating func tick(_ input: InputState) {
         defer { previous = input }
         let pressed = input.buttons.subtracting(previous.buttons)
         switch phase {
         case .pressStart:
-            if !pressed.isDisjoint(with: [.start, .cross]) {
-                // The backdrop keeps running: only the overlay objects change.
-                phase = .menu(selection: 0)
-                var menu = TitleScreen.make(file, phase: phase)
-                menu.objects[0] = screen.objects[0]
-                screen = menu
-            }
+            if !pressed.isDisjoint(with: [.start, .cross]) { openMenu() }
         case .menu(let selection):
             let down = input.leftStick.y < -0.5 && previous.leftStick.y >= -0.5
             let up = input.leftStick.y > 0.5 && previous.leftStick.y <= 0.5
             let count = TitleScreen.itemLabels.count
             if up || down {
-                let next = (selection + (down ? 1 : count - 1)) % count
-                TitleScreen.setSelected(&screen.objects[1 + selection], false)
-                TitleScreen.setSelected(&screen.objects[1 + next], true)
-                phase = .menu(selection: next)
+                select((selection + (down ? 1 : count - 1)) % count)
+            } else if !pressed.isDisjoint(with: [.start, .cross]) {
+                confirmed = selection
             }
         }
         screen.tick()
+    }
+
+    /// A tap or click at `point` in canvas coordinates (origin at the centre, y down, the
+    /// 512×448 space): on PRESS START it opens the menu; on an item it selects it, and a tap on
+    /// the item that is already selected confirms it.
+    public mutating func tap(at point: SIMD2<Float>) {
+        switch phase {
+        case .pressStart:
+            openMenu()
+        case .menu(let selection):
+            guard let index = itemFrames.firstIndex(where: { frame in
+                point.x >= frame.x && point.x <= frame.z && point.y >= frame.y && point.y <= frame.w
+            }) else { return }
+            if index == selection {
+                confirmed = index
+            } else {
+                select(index)
+            }
+        }
+    }
+
+    /// Hit area of each menu item, `(minX, minY, maxX, maxY)` in canvas coordinates: the
+    /// label as drawn, widened to the highlight bar's span and to half the item spacing
+    /// vertically so neighbouring rows don't leave dead gaps.
+    public var itemFrames: [SIMD4<Float>] {
+        guard case .menu = phase else { return [] }
+        let rows = (0 ..< TitleScreen.itemLabels.count).map { index -> SIMD4<Float>? in
+            var quads: [SpriteQuad] = []
+            screen.objects[1 + index].draw(textureSizes: screen.textureSizes, into: &quads, textureBase: screen.textureBase)
+            var lower = SIMD2<Float>(repeating: .infinity), upper = SIMD2<Float>(repeating: -.infinity)
+            for quad in quads {
+                for corner in [quad.corners.0, quad.corners.1, quad.corners.2, quad.corners.3] {
+                    lower = simd_min(lower, corner)
+                    upper = simd_max(upper, corner)
+                }
+            }
+            return lower.x.isFinite ? SIMD4(lower.x, lower.y, upper.x, upper.y) : nil
+        }
+        let half = Float(TitleScreen.itemSpacing) / 2
+        let minX = rows.compactMap { $0?.x }.min() ?? 0, maxX = rows.compactMap { $0?.z }.max() ?? 0
+        return rows.map { row in
+            guard let row else { return SIMD4(0, 0, -1, -1) }
+            let centre = (row.y + row.w) / 2
+            return SIMD4(minX, centre - half, maxX, centre + half)
+        }
+    }
+
+    private mutating func openMenu() {
+        // The backdrop keeps running: only the overlay objects change.
+        phase = .menu(selection: 0)
+        var menu = TitleScreen.make(file, phase: phase)
+        menu.objects[0] = screen.objects[0]
+        screen = menu
+    }
+
+    private mutating func select(_ next: Int) {
+        guard case .menu(let selection) = phase, next != selection else { return }
+        TitleScreen.setSelected(&screen.objects[1 + selection], false)
+        TitleScreen.setSelected(&screen.objects[1 + next], true)
+        phase = .menu(selection: next)
     }
 }
 

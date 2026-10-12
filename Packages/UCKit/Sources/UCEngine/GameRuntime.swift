@@ -36,6 +36,20 @@ public final class GameRuntime {
         }
     }
 
+    /// A tap or click at `point` on a surface of `size` (both in the view's points, origin at the
+    /// top-left). Mapped through the same canvas transform the sprite pass draws with, so it
+    /// lands on what is under the finger on any screen shape.
+    public func tap(at point: SIMD2<Float>, in size: SIMD2<Float>) {
+        guard title != nil, size.x > 0, size.y > 0 else {
+            press([.cross, .start])
+            return
+        }
+        let canvas = SpriteCanvas()
+        let half = canvas.visibleHalfExtent(width: Int(size.x * 4), height: Int(size.y * 4))
+        let normalized = point / size * 2 - 1
+        title?.tap(at: normalized * half)
+    }
+
     /// A short press from touch or a click (held for a few ticks, then released).
     public func press(_ buttons: InputState.Buttons = [], stick: SIMD2<Float> = .zero) {
         inputSource.press(buttons, stick: stick)

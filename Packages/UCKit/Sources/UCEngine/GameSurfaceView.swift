@@ -52,19 +52,28 @@ public final class GameSurfaceView: PlatformView {
     /// through GameController instead.
     private func installPointerControls() {
         #if os(iOS)
-        addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(tapped)))
+        addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(tapped(_:))))
         for direction in [UISwipeGestureRecognizer.Direction.up, .down] {
             let swipe = UISwipeGestureRecognizer(target: self, action: #selector(swiped(_:)))
             swipe.direction = direction
             addGestureRecognizer(swipe)
         }
         #elseif os(macOS)
-        addGestureRecognizer(NSClickGestureRecognizer(target: self, action: #selector(tapped)))
+        addGestureRecognizer(NSClickGestureRecognizer(target: self, action: #selector(tapped(_:))))
         #endif
     }
 
-    #if os(iOS) || os(macOS)
-    @objc private func tapped() { runtime.press([.cross, .start]) }
+    #if os(iOS)
+    @objc private func tapped(_ gesture: UITapGestureRecognizer) {
+        let point = gesture.location(in: self)
+        runtime.tap(at: SIMD2(Float(point.x), Float(point.y)), in: SIMD2(Float(bounds.width), Float(bounds.height)))
+    }
+    #elseif os(macOS)
+    @objc private func tapped(_ gesture: NSClickGestureRecognizer) {
+        // AppKit views are y-up; the canvas is y-down.
+        let point = gesture.location(in: self)
+        runtime.tap(at: SIMD2(Float(point.x), Float(bounds.height - point.y)), in: SIMD2(Float(bounds.width), Float(bounds.height)))
+    }
     #endif
 
     #if os(iOS)
