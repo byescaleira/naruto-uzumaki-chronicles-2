@@ -17,6 +17,8 @@ final class Metal4Renderer: Renderer {
     private let frameEvent: any MTLSharedEvent
     private let scenePipeline: any MTLRenderPipelineState
     private let outputPipeline: any MTLRenderPipelineState
+    /// nil when the app's library has no Sprite.metal.
+    private let spritePass: Metal4SpritePass?
     private var sceneTarget: (any MTLTexture)?
     private var frameIndex: UInt64 = 0
 
@@ -62,6 +64,8 @@ final class Metal4Renderer: Renderer {
         let compiler = try device.makeCompiler(descriptor: MTL4CompilerDescriptor())
         scenePipeline = try Self.pipeline(compiler, library, fragment: "boot_scene_fragment", format: HDRLayer.sceneFormat)
         outputPipeline = try Self.pipeline(compiler, library, fragment: "output_fragment", format: layer.pixelFormat)
+        spritePass = try? Metal4SpritePass(device: device, compiler: compiler, library: library, format: HDRLayer.sceneFormat,
+                                           slots: Self.framesInFlight, residency: residency)
     }
 
     private static func pipeline(
@@ -128,13 +132,24 @@ final class Metal4Renderer: Renderer {
         // Pass 1: scene into the HDR target.
         let scenePass = MTL4RenderPassDescriptor()
         scenePass.colorAttachments[0].texture = scene
-        scenePass.colorAttachments[0].loadAction = .dontCare
         scenePass.colorAttachments[0].storeAction = .store
+        let sprites = spritePass != nil ? frame.sprites : nil
+        if let sprites {
+            scenePass.colorAttachments[0].loadAction = .clear
+            scenePass.colorAttachments[0].clearColor = MTLClearColor(red: Double(sprites.clearColor.x), green: Double(sprites.clearColor.y),
+                                                                     blue: Double(sprites.clearColor.z), alpha: 1)
+        } else {
+            scenePass.colorAttachments[0].loadAction = .dontCare
+        }
         if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: scenePass) {
             encoder.label = "Scene"
-            encoder.setRenderPipelineState(scenePipeline)
-            encoder.setArgumentTable(argumentTable, stages: [.vertex, .fragment])
-            encoder.drawPrimitives(primitiveType: .triangle, vertexStart: 0, vertexCount: 3)
+            if let sprites, let spritePass {
+                spritePass.encode(sprites, into: encoder, width: scene.width, height: scene.height, slot: slot)
+            } else {
+                encoder.setRenderPipelineState(scenePipeline)
+                encoder.setArgumentTable(argumentTable, stages: [.vertex, .fragment])
+                encoder.drawPrimitives(primitiveType: .triangle, vertexStart: 0, vertexCount: 3)
+            }
             encoder.endEncoding()
         }
 

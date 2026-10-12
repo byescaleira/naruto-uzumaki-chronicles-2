@@ -35,7 +35,7 @@ let package = Package(
         // Command-line asset tool: list / verify / extract the original archives.
         .executableTarget(
             name: "UCTool",
-            dependencies: ["UCFormats"],
+            dependencies: ["UCFormats", "UCRender", "UCEngine"],
             path: "Sources/UCTool"
         ),
         .testTarget(

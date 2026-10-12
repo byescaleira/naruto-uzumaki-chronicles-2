@@ -19,6 +19,10 @@ public final class GameRuntime {
 
     private let inputSource = InputSource()
 
+    /// The 2D title flow (PRESS START → main menu), advanced each tick and drawn by the
+    /// renderer's sprite pass. Set it once the game data is loaded (`GameData.titleSprites()`).
+    public var title: TitleMenu?
+
     public init() {}
 
     public var time: Double { Double(tick) * Self.tickDuration }
@@ -34,10 +38,11 @@ public final class GameRuntime {
 
     private func step() {
         tick += 1
+        title?.tick(input)
     }
 
     public func frame(output: HDROutput) -> FrameInput {
-        FrameInput(time: time, output: output)
+        FrameInput(time: time, output: output, sprites: title?.screen.frame())
     }
 }
 

@@ -13,6 +13,9 @@ final class MetalRenderer: Renderer {
     private let queue: any MTLCommandQueue
     private let scenePipeline: any MTLRenderPipelineState
     private let outputPipeline: any MTLRenderPipelineState
+    /// nil when the app's library has no Sprite.metal.
+    private let spritePass: SpritePass?
+    private var frameIndex = 0
     private let inFlight = DispatchSemaphore(value: MetalRenderer.framesInFlight)
     private var sceneTarget: (any MTLTexture)?
     private let gpuClock = GPUClock()
@@ -28,6 +31,7 @@ final class MetalRenderer: Renderer {
         self.queue = queue
         scenePipeline = try Self.pipeline(device, library, fragment: "boot_scene_fragment", format: HDRLayer.sceneFormat)
         outputPipeline = try Self.pipeline(device, library, fragment: "output_fragment", format: layer.pixelFormat)
+        spritePass = try? SpritePass(device: device, library: library, format: HDRLayer.sceneFormat, slots: Self.framesInFlight)
     }
 
     private static func pipeline(
@@ -84,15 +88,29 @@ final class MetalRenderer: Renderer {
             output: frame.output
         )
 
+        // The semaphore guarantees the GPU is done with this slot's sprite buffer.
+        let slot = frameIndex % Self.framesInFlight
+        frameIndex += 1
         let scenePass = MTLRenderPassDescriptor()
         scenePass.colorAttachments[0].texture = scene
-        scenePass.colorAttachments[0].loadAction = .dontCare
         scenePass.colorAttachments[0].storeAction = .store
+        let sprites = spritePass != nil ? frame.sprites : nil
+        if let sprites {
+            scenePass.colorAttachments[0].loadAction = .clear
+            scenePass.colorAttachments[0].clearColor = MTLClearColor(red: Double(sprites.clearColor.x), green: Double(sprites.clearColor.y),
+                                                                     blue: Double(sprites.clearColor.z), alpha: 1)
+        } else {
+            scenePass.colorAttachments[0].loadAction = .dontCare
+        }
         if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: scenePass) {
             encoder.label = "Scene"
-            encoder.setRenderPipelineState(scenePipeline)
-            encoder.setFragmentBytes(&values, length: MemoryLayout<FrameUniforms>.stride, index: 0)
-            encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+            if let sprites, let spritePass {
+                spritePass.encode(sprites, into: encoder, width: scene.width, height: scene.height, slot: slot)
+            } else {
+                encoder.setRenderPipelineState(scenePipeline)
+                encoder.setFragmentBytes(&values, length: MemoryLayout<FrameUniforms>.stride, index: 0)
+                encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+            }
             encoder.endEncoding()
         }
 
