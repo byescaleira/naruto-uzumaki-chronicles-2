@@ -52,10 +52,17 @@ public struct AFSArchive: Sendable {
     }
 
     public func read(_ entry: Entry) throws -> Data {
+        try read(entry, prefix: Int(entry.size))
+    }
+
+    /// The first `prefix` bytes of `entry` (all of it when shorter), e.g. an ADX header.
+    public func read(_ entry: Entry, prefix: Int) throws -> Data {
+        let count = min(prefix, Int(entry.size))
+        guard count > 0 else { return Data() }
         let handle = try FileHandle(forReadingFrom: url)
         defer { try? handle.close() }
         try handle.seek(toOffset: UInt64(entry.offset))
-        guard let data = try handle.read(upToCount: Int(entry.size)), data.count == Int(entry.size) else {
+        guard let data = try handle.read(upToCount: count), data.count == count else {
             throw Failure.truncated
         }
         return data

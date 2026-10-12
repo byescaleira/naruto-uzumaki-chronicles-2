@@ -32,7 +32,7 @@ Projeto em andamento. O que já existe e foi verificado:
 | --- | --- |
 | **Arquivo `CFC*.DIG`** | Índice, compressor próprio e tabela de sub-arquivos decifrados. As **688 entradas dos 10 idiomas** expandem sem nenhuma falha (≈2 s por arquivo, 397 MiB cada). |
 | **Texturas** | Formato das texturas de UI/sprites decifrado, com emulação do *swizzle* da memória do GS: **3651 texturas** extraídas do disco inglês. |
-| **Áudio** | Leitor dos contêineres CRI `AFS` (as faixas ADX ainda não são decodificadas). |
+| **Áudio** | Decodificador CRI **ADX** em Swift puro, com as regras do próprio jogo (coeficientes, escala, histórico inicial e loop lidos como em `ADXB_DecodeHeaderAdx`). As **131 músicas** e as **2002 vozes** (inglês e japonês) decodificam inteiras, ≈ 170 milhões de amostras/s. Reprodução em streaming com `AVAudioEngine`: barramentos de música e voz, loops sem emenda, fades, sem alocação nem trava na thread de áudio. |
 | **App** | Compila para iOS, iPadOS, macOS e tvOS. Superfície Metal paisagem, de ponta a ponta, a 60 Hz com saída HDR. Os dados do jogo vêm **embutidos no app** (ver abaixo), em todas as plataformas: o app abre direto, sem pedir arquivo, e mostra os retratos decodificados no aparelho. |
 | **Ainda não** | Modelos 3D, animações, fases, scripts, lógica de jogo, vídeo `MV00.DSI`. |
 
@@ -154,7 +154,8 @@ Scale2x para manter os contornos. O fundo é o padrão karakusa verde dos menus 
 ```
 App/                 app multiplataforma (um único target), ícone e brand assets do tvOS
 Packages/UCKit/
-  UCFormats/         CFC.DIG (índice, descompressor, sub-arquivos), AFS
+  UCFormats/         CFC.DIG (índice, descompressor, sub-arquivos), AFS, ADX, tabela de streams
+  UCAudio/           reprodução ADX em streaming (AVAudioEngine): música e voz, loops, fades
   UCRender/          renderizador Metal 4 / Metal, saída HDR, shaders
   UCEngine/          loop de 60 Hz, entrada, superfície de jogo
   UCTool/            uc-tool: listar, verificar e extrair os arquivos do disco
@@ -214,6 +215,21 @@ Extrair as entradas e os sub-arquivos:
 
 ```bash
 swift run --package-path Packages/UCKit -c release uc-tool dig extract <disco-montado>/CFC_UK.DIG extracted
+```
+
+Áudio: tabela de codecs de cada entrada, decodificação para WAV (com passadas extras pelo loop) e verificação de
+todas as entradas:
+
+```bash
+swift run --package-path Packages/UCKit -c release uc-tool adx info GameData/XA/XA.AFS
+```
+
+```bash
+swift run --package-path Packages/UCKit -c release uc-tool adx decode GameData/XA/XA.AFS 1 bg001.wav 1
+```
+
+```bash
+swift run --package-path Packages/UCKit -c release uc-tool adx verify GameData/XA/XAVOICE.AFS
 ```
 
 Decodificar as texturas e gerar folhas de contato:

@@ -12,6 +12,7 @@ let package = Package(
         .library(name: "UCFormats", targets: ["UCFormats"]),
         .library(name: "UCRender", targets: ["UCRender"]),
         .library(name: "UCEngine", targets: ["UCEngine"]),
+        .library(name: "UCAudio", targets: ["UCAudio"]),
         .executable(name: "uc-tool", targets: ["UCTool"]),
     ],
     targets: [
@@ -32,10 +33,16 @@ let package = Package(
             dependencies: ["UCFormats", "UCRender"],
             swiftSettings: [.enableUpcomingFeature("ExistentialAny")]
         ),
+        // Streamed ADX playback (AVAudioEngine): music and voice buses, seamless loops.
+        .target(
+            name: "UCAudio",
+            dependencies: ["UCFormats"],
+            swiftSettings: [.enableUpcomingFeature("ExistentialAny")]
+        ),
         // Command-line asset tool: list / verify / extract the original archives.
         .executableTarget(
             name: "UCTool",
-            dependencies: ["UCFormats"],
+            dependencies: ["UCFormats", "UCAudio"],
             path: "Sources/UCTool"
         ),
         .testTarget(
@@ -45,6 +52,10 @@ let package = Package(
         .testTarget(
             name: "UCEngineTests",
             dependencies: ["UCEngine"]
+        ),
+        .testTarget(
+            name: "UCAudioTests",
+            dependencies: ["UCAudio", "UCFormats"]
         ),
     ]
 )
