@@ -1,0 +1,17 @@
+# Original game data — never commit (the user's own disc).
+*.iso
+*.ISO
+re/bin/
+# REA evidence holds decompiled pseudocode of the game and local paths.
+re/evidence/
+# Local copy of REA (recreate from the global install + re/rea-r5900-lane.patch).
+re/tools/
+
+# Build outputs
+.build/
+Packages/UCKit/.build/
+Packages/UCKit/.swiftpm/
+DerivedData/
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+.DS_Store

@@ -1,0 +1,85 @@
+# Generate the Xcode project with: xcodegen generate
+name: NarutoUC2
+options:
+  bundleIdPrefix: com.byescaleira
+  deploymentTarget:
+    iOS: "26.0"
+    macOS: "26.0"
+    tvOS: "26.0"
+  createIntermediateGroups: true
+
+packages:
+  UCKit:
+    path: Packages/UCKit
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Automatic
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+
+targets:
+  NarutoUC2:
+    type: application
+    supportedDestinations: [iOS, macOS, tvOS]
+    sources:
+      - path: App/Sources
+      # Icon Composer icon (iOS, iPadOS, macOS); layers built from game textures by re/scripts/MakeIcon.swift.
+      - path: App/AppIcon.icon
+        type: file
+        buildPhase: resources
+        destinationFilters: [iOS, macOS]
+      # tvOS layered icon + Top Shelf (brand assets).
+      - path: App/tvOS/Assets.xcassets
+        destinationFilters: [tvOS]
+    dependencies:
+      - package: UCKit
+        product: UCEngine
+      - package: UCKit
+        product: UCRender
+      - package: UCKit
+        product: UCFormats
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: "Naruto UC2"
+        LSApplicationCategoryType: public.app-category.action-games
+        GCSupportsControllerUserInteraction: true
+        GCSupportedGameControllers:
+          - ProfileName: ExtendedGamepad
+          - ProfileName: MicroGamepad
+        UIApplicationSupportsIndirectInputEvents: true
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
+        # Landscape only, always full screen.
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UIRequiresFullScreen: true
+        UIStatusBarHidden: true
+        UIViewControllerBasedStatusBarAppearance: true
+        UILaunchScreen:
+          UIColorName: ""
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.byescaleira.nuc2
+        PRODUCT_NAME: NarutoUC2
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        GENERATE_INFOPLIST_FILE: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        "ASSETCATALOG_COMPILER_APPICON_NAME[sdk=appletvos*]": "App Icon & Top Shelf Image"
+        "ASSETCATALOG_COMPILER_APPICON_NAME[sdk=appletvsimulator*]": "App Icon & Top Shelf Image"
+        ENABLE_HARDENED_RUNTIME: YES
+        ENABLE_APP_SANDBOX: YES
+        ENABLE_USER_SELECTED_FILES: readonly
+        SUPPORTS_MACCATALYST: NO
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
+        TARGETED_DEVICE_FAMILY: "1,2,3"

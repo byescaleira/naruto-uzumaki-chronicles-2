@@ -1,0 +1,65 @@
+{
+  "fill": {
+    "solid": "srgb:0.04706,0.36078,0.21961,1.00000"
+  },
+  "groups": [
+    {
+      "name": "Naruto",
+      "layers": [
+        {
+          "name": "Naruto",
+          "image-name": "Naruto.png",
+          "glass": false,
+          "opacity": 1,
+          "position": {
+            "scale": 1,
+            "translation-in-points": [
+              0,
+              0
+            ]
+          }
+        }
+      ],
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.5
+      },
+      "translucency": {
+        "enabled": false,
+        "value": 0.5
+      }
+    },
+    {
+      "name": "Background",
+      "layers": [
+        {
+          "name": "Background",
+          "image-name": "Background.png",
+          "glass": false,
+          "opacity": 1,
+          "position": {
+            "scale": 1,
+            "translation-in-points": [
+              0,
+              0
+            ]
+          }
+        }
+      ],
+      "shadow": {
+        "kind": "none",
+        "opacity": 0
+      },
+      "translucency": {
+        "enabled": false,
+        "value": 0.5
+      }
+    }
+  ],
+  "supported-platforms": {
+    "circles": [
+      "watchOS"
+    ],
+    "squares": "shared"
+  }
+}

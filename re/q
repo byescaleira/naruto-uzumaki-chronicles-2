@@ -1,0 +1,13 @@
+#!/bin/zsh
+# re/q <tool> '<json args>' [maxchars]  — query the running REA daemon; prints raw_result.
+ARGS="$2"; [[ -z "$ARGS" ]] && ARGS='{}'
+python3 - "$1" "$ARGS" "${3:-20000}" <<'PY'
+import json,sys,urllib.request,os
+tool,args,m=sys.argv[1],json.loads(sys.argv[2]),int(sys.argv[3])
+req=urllib.request.Request(f"http://127.0.0.1:{os.environ.get('REA_PORT','7391')}/call",data=json.dumps({"tool":tool,"args":args}).encode())
+d=json.load(urllib.request.urlopen(req,timeout=3600)); r=d['result']
+v=r.get('raw_result') if isinstance(r,dict) else r
+if v is None and isinstance(r,dict): v=r.get('normalized_result',r)
+if isinstance(v,dict) and 'value' in v and len(v)<=2: v=v['value']
+print(('ERROR ' if d['isError'] else '')+(v if isinstance(v,str) else json.dumps(v,indent=1))[:m])
+PY

@@ -1,0 +1,11 @@
+#!/bin/zsh
+# REA (local fork with PS2 R5900 lane) bound to Ghidra 12.1.4 + ghidra-emotionengine-reloaded.
+ROOT=${0:A:h}
+export GHIDRA_INSTALL_DIR=/opt/homebrew/opt/ghidra/libexec
+export JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home
+export PATH=$JAVA_HOME/bin:$PATH
+export REA_ANALYSIS_PROVIDER=ghidra
+export REA_GHIDRA_LANGUAGE_ID=r5900:LE:32:default
+export REA_GHIDRA_COMPILER_SPEC_ID=default
+export REA_GHIDRA_STARTUP_TIMEOUT_MS=${REA_GHIDRA_STARTUP_TIMEOUT_MS:-1800000}
+exec node "$ROOT/tools/rea-ps2/scripts/rea.mjs" "$@"
