@@ -15,6 +15,7 @@ import UniformTypeIdentifiers
 //   uc-tool adx info    <file.AFS>
 //   uc-tool adx decode  <file.AFS> <index> <out.wav> [loops=0]
 //   uc-tool adx verify  <file.AFS>
+//   uc-tool adx table   <CFC.DIG>   — stream volumes (entry 567)
 //   uc-tool adx mix     <file.AFS> <index> <out.wav> <seconds>   — offline, through UCAudio
 //   uc-tool adx play    <file.AFS> <index> [seconds=15] [volume=1]
 //   uc-tool disc info   <disc.iso | disc-folder>
@@ -256,6 +257,22 @@ case ("adx", "verify"):
     let elapsed = ContinuousClock.now - clock
     print("# \(archive.entries.count - failures) ok, \(failures) failures, \(decodedSamples) samples in \(elapsed)")
     if failures > 0 { exit(2) }
+
+case ("adx", "table"):
+    // The stream table (DIG entry 567): per-stream volume and channels, as the play call uses them.
+    let archive = try DIGArchive(url: archiveURL)
+    let entry = archive.entries[SoundTable.entry]
+    let data = try archive.read(entry)
+    let subfiles = DIGSubfileTable(data, count: Int(entry.subfileCount))
+    guard let subfile = subfiles.subfiles.first(where: { Int($0.index) == SoundTable.subfile }) else { fail("no stream table") }
+    let table = try SoundTable(subfiles.slice(subfile, of: data))
+    for (kind, streams) in [("music", table.music), ("movie", table.movies), ("voice", table.voices)] {
+        for stream in streams {
+            let level = CRIVolume.level(streamVolume: stream.volume)
+            print("\(kind)\t\(stream.index)\t\(stream.name ?? "-")\tvolume=\(stream.volume)\t\(stream.channels)ch\t"
+                  + "\(String(format: "%.1f", -Double(CRIVolume.attenuation(level: level)) / 10)) dB")
+        }
+    }
 
 case ("adx", "mix"):
     // Renders the playback path (AudioSystem's music bus, AVAudioEngine offline) and checks

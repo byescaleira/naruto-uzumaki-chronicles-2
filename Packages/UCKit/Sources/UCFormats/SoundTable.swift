@@ -16,7 +16,8 @@ import Foundation
 /// | 0x28 | u16 | voice count (2001) |
 ///
 /// Records are 8 bytes: `u32 name offset (from the file start), u8 0, u8 0x10,
-/// u8 volume (0…127), u8 channels`; the record index is the AFS entry index. The play call
+/// u8 volume (0…127), u8 channels`; the record index is the AFS entry index. `channels`
+/// matches every voice file but is 2 for all music records (21 tracks are mono). The play call
 /// sets the output level to `(volume × channelLevel + 0x40) >> 7`, channel level 0x80 by
 /// default (`DAT_005215c8`), through ``CRIVolume``.
 public struct SoundTable: Sendable {

@@ -146,7 +146,8 @@ Loaded by the sound task `FUN_0012b630` (asset id `0x2370000` = entry << 16 | su
 `+0x08` music table, `+0x10 u16` music count (131), `+0x12 u16` movie count (2), `+0x14..0x17`
 bytes handed to `FUN_001da200`, `+0x18` movie table (`mv01`, `mv00`, volume 0x73), `+0x1C` voice
 table, `+0x28 u16` voice count (2001). Records: `u32 name offset, u8 0, u8 0x10, u8 volume,
-u8 channels`; record *i* ↔ AFS entry *i*. The shipped sub-file is truncated inside the voice
+u8 channels`; record *i* ↔ AFS entry *i*. `channels` matches all 2002 voice files but is 2 for every
+music record (21 music files are mono). `uc-tool adx table CFC_UK.DIG` lists them. The shipped sub-file is truncated inside the voice
 names (≈ `xavoi1200`), so names are optional.
 
 ### Which music plays where (partial)
