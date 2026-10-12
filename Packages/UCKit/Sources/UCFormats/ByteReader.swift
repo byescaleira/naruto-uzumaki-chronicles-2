@@ -20,6 +20,14 @@ struct ByteReader {
             | UInt32(bytes[offset + 3]) << 24
     }
 
+    func i16(at offset: Int) -> Int16 { Int16(bitPattern: u16(at: offset)) }
+
+    func u64(at offset: Int) -> UInt64 { UInt64(u32(at: offset)) | UInt64(u32(at: offset + 4)) << 32 }
+
+    func f32(at offset: Int) -> Float { Float(bitPattern: u32(at: offset)) }
+
+    var count: Int { bytes.count }
+
     func cString(at offset: Int, maxLength: Int) -> String {
         let end = min(offset + maxLength, bytes.count)
         let raw = bytes[offset ..< end].prefix { $0 != 0 }

@@ -46,9 +46,12 @@ public struct HDROutput: Sendable, Equatable {
 public struct FrameInput: Sendable {
     public var time: Double
     public var output: HDROutput
+    /// 2D layer (menus, HUD); when set, the scene is cleared and the sprites drawn into it.
+    public var sprites: SpriteFrame?
 
-    public init(time: Double, output: HDROutput) {
+    public init(time: Double, output: HDROutput, sprites: SpriteFrame? = nil) {
         self.time = time
         self.output = output
+        self.sprites = sprites
     }
 }

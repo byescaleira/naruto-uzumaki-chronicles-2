@@ -342,3 +342,77 @@ bytes for MV00 (vs 53,739,520 for the DSI), byte-identical across runs; 2732 fra
 109.28 s video / 109.29 s audio (AAC priming handled by the edit list: 0-sample offset
 against the decoded PCM), RGB SSIM 0.965 against the MPEG-2 source. `--height 1080`
 pre-scales to 1440×1080 instead (61 MB at CRF 20).
+
+## 2D sprites (menus, HUD, loading screens)
+
+Sprite files are DIG sub-files with a **section table** `{u32 count, {u32 offset, u32 size} × count}`
+(offsets from the table; `FUN_001bf610(file, n)` returns section `n`). Type-2 files have two sections:
+an **animation bank** and a **texture set**. `uc-tool sprite scan` finds 98 of them in `CFC_UK.DIG`
+(PSMT8 and PSMT4 only).
+
+### Animation bank (section 0)
+
+`u32 0x8001`, then at `base = section + 4` (the pointer `FUN_00262b50` keeps):
+`u16` frame / animation / key / piece counts, 8 reserved bytes, `u32` offsets (from `base`) of the tables.
+
+| Table | Stride | Fields |
+| --- | --- | --- |
+| frame | 12 | `u16 firstPiece, u16 pieceCount, s16 x, y, w, h` (bounds) |
+| animation | 12 | `u16 firstKey, u16 keyCount, …, u8 flags @8` (bit 0 = morph between frames) |
+| key | 32 | `s16 frame, u16 duration, u16 durationMax, u16 event, f32 scale x/y, f32 translate x/y, s16 rotation, u16 nextAnimation, u16 nextKey (relative), u8 alpha` |
+| piece | 32 | `u16 texture, u16 ?, s16 x, y, u16 u, v, uw, vh, s16 w, h, u8 transformFlags, u8 alpha, s16 pivot x/y, s16 rotation, u8 blend @1c, u8 flip @1e` |
+
+- `FUN_002627d0` starts an animation (key = first key, ticks = duration, random up to durationMax via
+  `FUN_001e2fd0` = `rand() & 0xFFF`, scaled `>> 10`). `FUN_002623f0` is the per-frame tick;
+  `FUN_00262570` steps (returns the key's `event`, 1 on the last key). When `nextAnimation` differs,
+  the step indexes the animation table with the *key* index (game quirk, reproduced); the draw path
+  interpolates towards `animations[nextAnimation].firstKey`.
+- `FUN_0025e9d0` draws: `t = remaining·1024/duration`; scale, translation, rotation and key alpha
+  interpolate `target + t·(current − target)/1024`. Morph animations also lerp each piece's corners
+  and alpha with the target key's frame.
+- `FUN_002618d0` corners: half-size box (flip negates), piece rotation, `+ (w/2 + x, h/2 + y)`, then
+  key scale + rotation (around `pivot` if `transformFlags ≠ 0`: bit 0 no scale, 1 no rotation,
+  2 pivot unscaled, 3 pivot unrotated), `+ translation`, optional instance mirror. 4096 = one turn.
+- `FUN_00260a40` emits per piece: the texture's register packet, `CLAMP_1 = REGION_CLAMP [u, u+uw−1] ×
+  [v, v+vh−1]`, TEX1 forced bilinear (`| 0x60`), `ALPHA_1` = 0x44 / 0x48 / 0x42 for blend 0 / 1 / 2
+  (`FUN_001c92a0`), `TEST_1 = 0x317FD`, then a textured alpha-blended **TRIFAN** (`PRIM 0x55`),
+  `RGBAQ = instance RGB, A = pieceAlpha · instanceAlpha · keyAlpha >> 14`, `ST = (texel·16 ± 8) /
+  (16·2^TW)`, `XYZ = corner·16 + position + 0x8000`: the 2D origin is the **screen centre**, logical
+  space **512 × 448** (NTSC lines). The PAL build multiplies y by 8/7 (`18.285715`, `1.1428572`) to
+  fill 512 lines; the reimplementation keeps the 448-line space.
+
+### Texture set (section 1)
+
+`u32 N textures, u32 M uploads, 0, 0`; N × 0x50 register packets (GIFtag + A+D `CLAMP_1, MIPTBP1_1,
+TEX1_1, TEX0_1`, `FUN_00342f50`); N × 20 records `{u16 level[4], u16 clut, u8 levels, u8 hasClut, u32 0,
+u16 w, u16 h}` (`FUN_00342f68`); M × 16 uploads `{u32 0, u32 offset (from the record), u16 w, u16 h,
+u16 blocks, u16 tbp}` (`FUN_00342f98`). `FUN_001d06e0` allocates GS memory per upload
+(`FUN_001d1f00`), patches TBP0 / CBP / MIPTBP1, and `FUN_001d0bc0` uploads each one as a **PSMCT32**
+IMAGE transfer (`DBW = ⌈w/64⌉`). The GS samples them with the packet's `TEX0` (PSMT8 or **PSMT4**,
+CSM1, CT32 CLUTs). `GSLocalMemory` in UCFormats replays exactly that. Earlier decoders missed
+`0040/00` (the title screen) because it mixes PSMT4 textures.
+
+The PSMT8 column table used before had rows 2–3 / 10–11 wrong (pairs of pixel groups swapped → dotted
+outlines on ~3 % of pixels); fixed in `GSSwizzle` and `re/scripts/gs.py`, checked against the classic
+unswizzle formula in the tests.
+
+### Objects and the title module
+
+- Object (`FUN_00265ab0`, 0x4C bytes) with layers (`FUN_002644f0`, 0x94 bytes): layer = animation
+  instance + anchor (centre of another animation's bounds) + alignment + position (`FUN_00264060`),
+  flags (`FUN_00263410` / `FUN_00263480`: 0x20 hidden, 0x8 paused, 0x4 hold on first key, 0x80
+  absolute), priority (`FUN_002634f0`). `FUN_00265390` ticks, `FUN_00265180` draws priority 0, 1, …
+- `FUN_002d4120(n)` reads handles at `DAT_004da940` (`entry << 16 | sub-file`, the loader
+  `FUN_001292e0` keys loaded entries by DIG index): `[1] = 40/0` title, `[2] = 40/1` mode select,
+  `[4] = 12/3`, `[5] = 39/0` character select, `[6] = 14/0`.
+- Title / main menu (`0040/00`): `FUN_001a9350` → task `FUN_001a8c30` (mode 0: 21 layers, animations
+  0–9, 0xC–0x14, 0xA, 0x15); `FUN_001aac40` creates 3 items `FUN_001aa070(i, 0, 0)` (names "NEW GAME",
+  "LOAD GAME", "OPTION" at `0x3523b0`, `{name, animation, -1, 0}`) → `FUN_001a9b90`: highlight 0x16
+  anchored on 0x17 at `y = i·40`, labels 0x18–0x1A; `FUN_001aa3e0` plays "PRESS START BUTTON" (0x1B).
+  Mode 1 (`FUN_002fcce0`, "STORY MODE" table at `0x3523e0`) uses `0040/01` + `12/3`.
+- Tasks: `FUN_001e7de0(update, size, order, drawOrder, flags)`; `FUN_001e7980/7970/7950` set the draw /
+  update / destroy callbacks of the current task.
+
+Open: the menu items' own update/draw callbacks (`0x1a9750`, `0x1aa370`, not functions in the Ghidra
+database), what each item starts, the 50 Hz vs 60 Hz tick of the 2D animations (the port ticks them at
+60 Hz), the character select / versus / loading screen modules.

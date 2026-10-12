@@ -1,8 +1,11 @@
 import CryptoKit
 import Foundation
 import ImageIO
+import Metal
 import UCAudio
+import UCEngine
 import UCFormats
+import UCRender
 import UniformTypeIdentifiers
 
 // uc-tool — inspect and extract Naruto: Uzumaki Chronicles 2 data from the user's own disc.
@@ -26,6 +29,13 @@ import UniformTypeIdentifiers
 //   uc-tool model scan   <CFC.DIG> [sheet.png]
 //   uc-tool model info   <CFC.DIG> <entry> <subfile>
 //   uc-tool model export <CFC.DIG> <entry> <subfile> <out-dir>   — OBJ + MTL + PNG textures + render
+//   uc-tool sprite info     <CFC.DIG> <entry> <subfile>
+//   uc-tool sprite textures <CFC.DIG> <entry> <subfile> <out-dir>
+//   uc-tool sprite scan     <CFC.DIG>
+//   uc-tool sprite anims    <CFC.DIG> <entry> <subfile> <out-dir>   — every animation alone, 512×448
+//   uc-tool screen render   <CFC.DIG> <screen> <out.png> [WxH] [--frames N] [--backend metal4|classic]
+//                           screens: title (PRESS START), menu, menu:<0-2> (BEGIN! / CONTINUE! / OPTIONS),
+//                                    file:<entry>/<sub-file>[:<hex animation>,…] (any sprite file, e.g. file:57/0)
 
 func fail(_ message: String) -> Never {
     FileHandle.standardError.write(Data((message + "\n").utf8))
@@ -85,6 +95,62 @@ func writePNG(_ texture: DecodedTexture, to url: URL) throws {
     let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil)!
     CGImageDestinationAddImage(destination, image, nil)
     guard CGImageDestinationFinalize(destination) else { fail("cannot write \(url.path)") }
+}
+
+/// `[WxH] [--frames N] [--backend metal4|classic]`
+struct Options {
+    var size = SIMD2(1920, 1080)
+    var frames = 0
+    var backend = SpriteSnapshot.Backend.metal4
+
+    init(_ arguments: ArraySlice<String>) {
+        var rest = arguments.makeIterator()
+        while let argument = rest.next() {
+            switch argument {
+            case "--frames": frames = rest.next().flatMap(Int.init) ?? 0
+            case "--backend": backend = rest.next().flatMap(SpriteSnapshot.Backend.init(rawValue:)) ?? .metal4
+            default:
+                let parts = argument.split(separator: "x").compactMap { Int($0) }
+                if parts.count == 2 { size = SIMD2(parts[0], parts[1]) }
+            }
+        }
+    }
+}
+
+/// App/Shaders/Sprite.metal, compiled at run time (the app compiles it into default.metallib).
+@MainActor
+func spriteLibrary(_ device: any MTLDevice) throws -> any MTLLibrary {
+    let path = ProcessInfo.processInfo.environment["NUC2_SHADERS"].map { URL(fileURLWithPath: $0) }
+        ?? URL(fileURLWithPath: #filePath).deletingLastPathComponent().appending(path: "../../../../App/Shaders")
+    let source = try String(contentsOf: path.appending(path: "Sprite.metal"), encoding: .utf8)
+    return try device.makeLibrary(source: source, options: nil)
+}
+
+/// Renders a sprite frame off-screen and writes it as an sRGB PNG (linear scene clamped to SDR white).
+@MainActor
+func renderPNG(_ frame: SpriteFrame, size: SIMD2<Int>, backend: SpriteSnapshot.Backend, to url: URL) throws {
+    guard let device = MTLCreateSystemDefaultDevice() else { fail("no Metal device") }
+    let pixels = try SpriteSnapshot.render(frame, width: size.x, height: size.y, device: device, library: try spriteLibrary(device), backend: backend)
+    func encode(_ c: Float) -> UInt8 {
+        let v = min(max(c, 0), 1)
+        let s = v <= 0.0031308 ? v * 12.92 : 1.055 * powf(v, 1 / 2.4) - 0.055
+        return UInt8(min(255, max(0, (s * 255).rounded())))
+    }
+    var rgba = [UInt8](repeating: 255, count: size.x * size.y * 4)
+    for i in 0 ..< size.x * size.y {
+        rgba[i * 4] = encode(pixels[i * 4]); rgba[i * 4 + 1] = encode(pixels[i * 4 + 1]); rgba[i * 4 + 2] = encode(pixels[i * 4 + 2])
+    }
+    try writePNG(DecodedTexture(width: size.x, height: size.y, rgba: rgba), to: url)
+}
+
+/// One sub-file of a DIG entry.
+func subfileBytes(_ archive: DIGArchive, _ entryIndex: Int, _ subfileIndex: Int) throws -> [UInt8] {
+    guard archive.entries.indices.contains(entryIndex) else { fail("no entry \(entryIndex)") }
+    let entry = archive.entries[entryIndex]
+    let data = try archive.read(entry)
+    let table = DIGSubfileTable(data, count: Int(entry.subfileCount))
+    guard let subfile = table.subfiles.first(where: { Int($0.index) == subfileIndex }) else { fail("no sub-file \(subfileIndex)") }
+    return Array(table.slice(subfile, of: data))
 }
 
 switch (arguments[0], arguments[1]) {
@@ -367,6 +433,101 @@ case ("movie", "convert"):
     guard arguments.count >= 4 else { fail("usage: uc-tool movie convert <MV00.DSI | disc> <out-dir> [options]") }
     try movieConvert(arguments[2], to: URL(fileURLWithPath: arguments[3], isDirectory: true),
                      MovieConversion(arguments: arguments.dropFirst(4)))
+
+case ("sprite", "info"), ("sprite", "textures"):
+    guard arguments.count >= 5, let entryIndex = Int(arguments[3]), let subfileIndex = Int(arguments[4]) else {
+        fail("usage: uc-tool sprite (info|textures) <CFC.DIG> <entry> <subfile> [out-dir]")
+    }
+    let archive = try DIGArchive(url: archiveURL)
+    let file = try SpriteFile(try subfileBytes(archive, entryIndex, subfileIndex))
+    if arguments[1] == "info" {
+        let bank = file.bank
+        print("frames \(bank.frames.count) animations \(bank.animations.count) keys \(bank.keys.count) pieces \(bank.pieces.count)")
+        for (i, texture) in file.textures.textures.enumerated() {
+            let t = texture.tex0
+            print("texture \(i): psm \(hex(t.psm)) \(t.width)×\(t.height) tbw \(t.tbw) levels \(texture.levels) clut \(texture.clut.map(String.init) ?? "-")")
+        }
+    } else {
+        guard arguments.count >= 6 else { fail("usage: uc-tool sprite textures <CFC.DIG> <entry> <subfile> <out-dir>") }
+        let out = URL(fileURLWithPath: arguments[5], isDirectory: true)
+        try FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
+        for (n, texture) in file.textures.decode().enumerated() {
+            guard let texture else { continue }
+            try writePNG(texture, to: out.appending(path: String(format: "%04d_%02d_t%02d.png", entryIndex, subfileIndex, n)))
+        }
+    }
+
+case ("sprite", "scan"):
+    // Every sub-file that parses as a sprite file, with its pixel formats.
+    let archive = try DIGArchive(url: archiveURL)
+    for entry in archive.entries where !entry.isEmpty {
+        let data = try archive.read(entry)
+        let table = DIGSubfileTable(data, count: Int(entry.subfileCount))
+        guard table.isConsistent(entrySize: data.count) else { continue }
+        for subfile in table.subfiles {
+            let bytes = Array(table.slice(subfile, of: data))
+            guard SpriteFile.looksLikeSpriteFile(bytes) else { continue }
+            do {
+                let file = try SpriteFile(bytes)
+                let formats = Set(file.textures.textures.map { hex($0.tex0.psm) }).sorted().joined(separator: ",")
+                print("\(entry.index)/\(subfile.index)\tanimations \(file.bank.animations.count)\ttextures \(file.textures.textures.count)\tpsm \(formats)")
+            } catch {
+                print("\(entry.index)/\(subfile.index)\terror \(error)")
+            }
+        }
+    }
+
+case ("screen", "render"):
+    guard arguments.count >= 5 else {
+        fail("usage: uc-tool screen render <CFC.DIG> <screen> <out.png> [WxH] [--frames N] [--backend metal4|classic]")
+    }
+    let options = Options(arguments.dropFirst(5))
+    let archive = try DIGArchive(url: archiveURL)
+    let name = arguments[3].split(separator: ":")
+    var screen: SpriteScreen
+    switch name.first {
+    case "title":
+        screen = TitleScreen.make(try SpriteFile(try subfileBytes(archive, TitleScreen.entry, TitleScreen.subfile)), phase: .pressStart)
+    case "menu":
+        let selection = name.count > 1 ? Int(name[1]) ?? 0 : 0
+        screen = TitleScreen.make(try SpriteFile(try subfileBytes(archive, TitleScreen.entry, TitleScreen.subfile)), phase: .menu(selection: selection))
+    case "file":
+        // file:<entry>/<sub-file>[:<hex animation>,…] — one layer per animation (default: animation 0).
+        let path = name.count > 1 ? name[1].split(separator: "/").compactMap { Int($0) } : []
+        guard path.count == 2 else { fail("usage: file:<entry>/<sub-file>[:<hex animation>,…]") }
+        let file = try SpriteFile(try subfileBytes(archive, path[0], path[1]))
+        let animations = name.count > 2 ? name[2].split(separator: ",").compactMap { Int($0, radix: 16) } : [0]
+        screen = SpriteScreen(files: [file])
+        var object = SpriteObject()
+        for (id, animation) in animations.enumerated() { object.add(id: id, animation: animation, bank: file.bank) }
+        screen.objects = [object]
+    default:
+        fail("unknown screen \(arguments[3]) (title, menu, menu:<0-2>, file:<entry>/<sub-file>[:<hex animation>,…])")
+    }
+    screen.tick(frames: options.frames)
+    try renderPNG(screen.frame(), size: options.size, backend: options.backend, to: URL(fileURLWithPath: arguments[4]))
+    print("rendered \(arguments[3]) after \(options.frames) frames: \(screen.quads.count) quads, \(screen.atlas.layers.count) textures → \(arguments[4])")
+
+case ("sprite", "anims"):
+    guard arguments.count >= 6, let entryIndex = Int(arguments[3]), let subfileIndex = Int(arguments[4]) else {
+        fail("usage: uc-tool sprite anims <CFC.DIG> <entry> <subfile> <out-dir> [--frames N]")
+    }
+    let options = Options(arguments.dropFirst(6))
+    let archive = try DIGArchive(url: archiveURL)
+    let file = try SpriteFile(try subfileBytes(archive, entryIndex, subfileIndex))
+    let out = URL(fileURLWithPath: arguments[5], isDirectory: true)
+    try FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
+    for animation in file.bank.animations.indices {
+        var screen = SpriteScreen(files: [file])
+        var object = SpriteObject()
+        object.add(id: 0, animation: animation, bank: file.bank)
+        screen.objects = [object]
+        screen.clearColor = SIMD3(0.05, 0.05, 0.05)
+        screen.tick(frames: options.frames)
+        try renderPNG(screen.frame(canvas: SpriteCanvas(pixelAspect: 1)), size: SIMD2(512, 448), backend: options.backend,
+                      to: out.appending(path: String(format: "%04d_%02d_a%02x.png", entryIndex, subfileIndex, animation)))
+    }
+    print("rendered \(file.bank.animations.count) animations")
 
 case ("pack", _):
     // `uc-tool pack <disc.iso> <out-dir>`: arguments[1] is the disc, arguments[2] the output.
