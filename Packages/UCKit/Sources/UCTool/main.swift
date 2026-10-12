@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import ImageIO
 import UCFormats
@@ -12,17 +13,25 @@ import UniformTypeIdentifiers
 //   uc-tool afs extract <file.AFS> <out-dir>
 //   uc-tool disc info   <disc.iso | disc-folder>
 //   uc-tool tex extract <disc.iso | disc-folder> <out-dir> <entry> <subfile> [archive=CFC_UK.DIG]
+//   uc-tool pack        <disc.iso> <out-dir>   — the files the app embeds (GameData/)
 
 func fail(_ message: String) -> Never {
     FileHandle.standardError.write(Data((message + "\n").utf8))
     exit(1)
 }
 
+/// What the app embeds from the disc (English text and voices). Bump `format` whenever the
+/// selection or a conversion step changes, so CI fetches a matching package.
+enum GamePack {
+    static let format = 1
+    static let files = ["SYSTEM.CNF", "CFC_UK.DIG", "XA/XA.AFS", "XA/XAVOICE.AFS", "MV/MV00.DSI"]
+}
+
 let arguments = Array(CommandLine.arguments.dropFirst())
 guard arguments.count >= 3 else {
     fail("usage: uc-tool (dig|afs) (list|verify|extract) <archive> [out-dir] [entry...]")
 }
-let archiveURL = URL(fileURLWithPath: arguments[2])
+let archiveURL = URL(fileURLWithPath: arguments[arguments[0] == "pack" ? 1 : 2])
 
 func hex(_ value: some BinaryInteger) -> String { "0x" + String(value, radix: 16) }
 
@@ -130,6 +139,38 @@ case ("tex", "extract"):
         try writePNG(texture, to: out.appending(path: String(format: "%04d_%02d_%03d.png", entryIndex, subfileIndex, n)))
     }
     print("decoded \(textures.count) textures")
+
+case ("pack", _):
+    // `uc-tool pack <disc.iso> <out-dir>`: arguments[1] is the disc, arguments[2] the output.
+    let disc = try DiscImage(url: URL(fileURLWithPath: arguments[1]))
+    try disc.validate()
+    let out = URL(fileURLWithPath: arguments[2], isDirectory: true)
+    var manifest: [[String: Any]] = []
+    for path in GamePack.files {
+        let file = try disc.file(path)
+        let target = out.appending(path: path)
+        try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+        FileManager.default.createFile(atPath: target.path, contents: nil)
+        let writer = try FileHandle(forWritingTo: target)
+        let reader = try FileHandle(forReadingFrom: file.url)
+        try reader.seek(toOffset: file.offset)
+        var hash = SHA256()
+        var remaining = file.size
+        while remaining > 0 {
+            let chunk = try reader.read(upToCount: Int(min(remaining, 8 << 20))) ?? Data()
+            guard !chunk.isEmpty else { fail("short read in \(path)") }
+            hash.update(data: chunk)
+            try writer.write(contentsOf: chunk)
+            remaining -= UInt64(chunk.count)
+        }
+        try writer.close(); try reader.close()
+        let digest = hash.finalize().map { String(format: "%02x", $0) }.joined()
+        manifest.append(["path": path, "size": file.size, "sha256": digest])
+        print("\(path)\t\(file.size)\t\(digest)")
+    }
+    let json = try JSONSerialization.data(withJSONObject: ["format": GamePack.format, "source": DiscImage.expectedExecutable, "files": manifest],
+                                          options: [.prettyPrinted, .sortedKeys])
+    try json.write(to: out.appending(path: "manifest.json"))
 
 default:
     fail("unknown command: \(arguments[0]) \(arguments[1])")

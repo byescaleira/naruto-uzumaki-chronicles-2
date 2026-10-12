@@ -51,11 +51,14 @@ public struct GameData: Sendable {
     /// selected by `FUN_00127300`.
     public static let languages = ["UK", "FR", "DE", "ES", "IT"]
 
+    /// Opens `CFC_<language>.DIG`; when the data doesn't carry that language (the embedded
+    /// package ships English only), falls back to English.
     public init(disc: DiscImage, language: String = GameData.preferredLanguage) throws {
         try disc.validate()
         self.disc = disc
-        self.language = language
-        archive = try DIGArchive(file: try disc.file("CFC_\(language).DIG"))
+        let chosen = disc.files["CFC_\(language).DIG"] != nil ? language : "UK"
+        self.language = chosen
+        archive = try DIGArchive(file: try disc.file("CFC_\(chosen).DIG"))
     }
 
     public init(url: URL) throws {

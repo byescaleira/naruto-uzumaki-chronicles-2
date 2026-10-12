@@ -40,6 +40,11 @@ targets:
       - path: App/Shaders
       # UI strings: English source, Brazilian Portuguese translation.
       - path: App/Resources
+      # Game data embedded in the app (private package, never in git): scripts/fetch_game_data.sh.
+      - path: GameData
+        type: folder
+        buildPhase: resources
+        optional: true
       # Icon Composer icon (iOS, iPadOS, macOS); layers built from game textures by re/scripts/MakeIcon.swift.
       - path: App/AppIcon.icon
         type: file
@@ -48,6 +53,13 @@ targets:
       # tvOS layered icon + Top Shelf (brand assets).
       - path: App/tvOS/Assets.xcassets
         destinationFilters: [tvOS]
+    preBuildScripts:
+      - name: Check embedded game data
+        script: '"$SRCROOT/scripts/check_game_data.sh"'
+        inputFiles:
+          - $(SRCROOT)/scripts/check_game_data.sh
+          - $(SRCROOT)/GameData/manifest.json
+        basedOnDependencyAnalysis: false
     dependencies:
       - package: UCKit
         product: UCEngine
@@ -65,8 +77,6 @@ targets:
           - ProfileName: ExtendedGamepad
           - ProfileName: MicroGamepad
         UIApplicationSupportsIndirectInputEvents: true
-        UIFileSharingEnabled: true
-        LSSupportsOpeningDocumentsInPlace: true
         # Landscape only. iPhone declares it here; iPadOS 26 resizable scenes must declare every
         # orientation, so iPad locks to landscape at runtime (GameViewController) and keeps the
         # scene at screen size (UISceneSizeRestrictions) instead of the deprecated UIRequiresFullScreen.
@@ -98,8 +108,6 @@ targets:
         "ASSETCATALOG_COMPILER_APPICON_NAME[sdk=appletvsimulator*]": "App Icon & Top Shelf Image"
         ENABLE_HARDENED_RUNTIME: YES
         ENABLE_APP_SANDBOX: YES
-        ENABLE_USER_SELECTED_FILES: readonly
-        "CODE_SIGN_ENTITLEMENTS[sdk=macosx*]": App/NarutoUC2-macOS.entitlements
         SUPPORTS_MACCATALYST: NO
         SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
         TARGETED_DEVICE_FAMILY: "1,2,3"

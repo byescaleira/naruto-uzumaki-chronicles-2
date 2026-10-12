@@ -1,24 +1,27 @@
 import SwiftUI
 import UCEngine
 import UCFormats
-import UniformTypeIdentifiers
 
-/// The Metal surface always fills the screen; the disc flow floats above it in Liquid Glass.
+/// The Metal surface always fills the screen; status floats above it in Liquid Glass.
 struct RootView: View {
     let runtime: GameRuntime
-    let library: DiscLibrary
+    let library: GameLibrary
 
     var body: some View {
         Group {
             switch library.state {
-            case .searching, .loading:
-                ProgressView("Reading the disc…")
+            case .loading:
+                ProgressView("Loading…")
                     .padding(32)
                     .glassEffect(.regular, in: .rect(cornerRadius: 28))
-            case .needsDisc(let problem):
-                DiscSetupPanel(library: library, problem: problem)
+            case .failed(let problem):
+                Label(problem, systemImage: "exclamationmark.triangle.fill")
+                    .font(.headline)
+                    .foregroundStyle(.orange)
+                    .padding(32)
+                    .glassEffect(.regular, in: .rect(cornerRadius: 28))
             case .ready(let data):
-                DiscReadyPanel(library: library, data: data)
+                GameDataPanel(data: data)
             }
         }
         .padding(24)
@@ -32,56 +35,8 @@ struct RootView: View {
     }
 }
 
-/// First launch: the user points the app at their own copy of the game.
-private struct DiscSetupPanel: View {
-    let library: DiscLibrary
-    let problem: String?
-    @State private var choosing = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Text("Naruto: Uzumaki Chronicles 2")
-                .font(.largeTitle.bold())
-            Text("To play, choose your own copy of the game as a disc image (.iso): the European PAL release, SLES-55090. Nothing is copied: the app reads the file where it is.")
-                .font(.body)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            if let problem {
-                Label(problem, systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
-            }
-            #if os(tvOS)
-            Text("Importing a disc on Apple TV isn't available yet. Use the app on iPhone, iPad or Mac for now.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-            #else
-            Button {
-                choosing = true
-            } label: {
-                Label("Choose Disc Image", systemImage: "opticaldisc")
-                    .font(.headline)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-            }
-            .buttonStyle(.glassProminent)
-            .fileImporter(isPresented: $choosing, allowedContentTypes: Self.discTypes) { result in
-                if case .success(let url) = result {
-                    Task { await library.importDisc(url) }
-                }
-            }
-            #endif
-        }
-        .frame(maxWidth: 560, alignment: .leading)
-        .padding(32)
-        .glassEffect(.regular, in: .rect(cornerRadius: 28))
-    }
-
-    private static let discTypes: [UTType] = [UTType(filenameExtension: "iso") ?? .diskImage, .diskImage, .folder]
-}
-
-/// The disc was recognised: show art decoded from it on this device.
-private struct DiscReadyPanel: View {
-    let library: DiscLibrary
+/// The embedded data loaded: show art decoded from it on this device.
+private struct GameDataPanel: View {
     let data: GameData
     @State private var faces: CGImage?
 
@@ -93,22 +48,18 @@ private struct DiscReadyPanel: View {
                     .interpolation(.medium)
                     .aspectRatio(contentMode: .fit)
                     .frame(maxWidth: 240, maxHeight: 240)
-                    .accessibilityLabel("Character portraits decoded from the disc")
+                    .accessibilityLabel("Character portraits decoded from the game data")
             }
             VStack(alignment: .leading, spacing: 14) {
-                Label("Disc recognized", systemImage: "checkmark.seal.fill")
+                Label("Game data loaded", systemImage: "checkmark.seal.fill")
                     .font(.title2.bold())
                     .foregroundStyle(.green)
                 Text("SLES-55090 · CFC_\(data.language).DIG · \(data.archive.entries.filter { !$0.isEmpty }.count) entries")
                     .font(.callout.monospaced())
                     .foregroundStyle(.secondary)
-                Text("These portraits were decoded on this device from your disc. The game itself is still being rebuilt from the original code, so there's nothing to play yet.")
+                Text("These portraits were decoded on this device from the game data embedded in the app. The game itself is still being rebuilt from the original code, so there's nothing to play yet.")
                     .font(.body)
                     .fixedSize(horizontal: false, vertical: true)
-                #if !os(tvOS)
-                Button("Choose Another Disc") { library.forget() }
-                    .buttonStyle(.glass)
-                #endif
             }
             .frame(maxWidth: 420, alignment: .leading)
         }

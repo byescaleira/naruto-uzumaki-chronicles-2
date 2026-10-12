@@ -8,7 +8,7 @@ struct NarutoUC2App: App {
     #endif
 
     @State private var runtime = GameRuntime()
-    @State private var library = DiscLibrary()
+    @State private var library = GameLibrary()
 
     var body: some Scene {
         WindowGroup {
@@ -21,7 +21,7 @@ struct NarutoUC2App: App {
                 #if os(macOS)
                 .frame(minWidth: 960, minHeight: 540)
                 #endif
-                .task { await library.restore() }
+                .task { await library.load() }
         }
         #if os(macOS)
         .windowStyle(.hiddenTitleBar)

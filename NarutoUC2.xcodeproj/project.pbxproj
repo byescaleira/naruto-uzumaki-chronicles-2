@@ -8,12 +8,13 @@
 
 /* Begin PBXBuildFile section */
 		085A4EA9334CDE45B2027B00 /* UCEngine in Frameworks */ = {isa = PBXBuildFile; productRef = 320BE2057B97C0C3840D7808 /* UCEngine */; };
-		13D12FF3FC679604EA000927 /* DiscLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86334EBB649138C15F822505 /* DiscLibrary.swift */; };
 		173EA88543DC63E995AD129D /* UCFormats in Frameworks */ = {isa = PBXBuildFile; productRef = 89102883FE9DEBC74C17EB30 /* UCFormats */; };
 		239B1E2E59E00ED705DEFA1D /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 6FE58A370F9B5E04CA96322D /* Localizable.xcstrings */; };
 		28924FA92D0A701A0EAF2F96 /* MacAppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6B4F77C549003FAAE3C88CB /* MacAppDelegate.swift */; };
 		2D86A09A21E773E5B1A6CF2D /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E96BDD408380AA78442475AF /* RootView.swift */; };
+		330C7B20544C1E5AB0C1CAA6 /* GameData in Resources */ = {isa = PBXBuildFile; fileRef = 39C89FFFE1D96CC782C25BDB /* GameData */; };
 		58E03602A69B5C3434AF1459 /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = CFE0B13E13193563C0A3EDB0 /* AppIcon.icon */; platformFilters = (ios, macos, ); };
+		62D7C4764BA3F2886BE5229D /* GameLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71726A761D6E84DAEB626D72 /* GameLibrary.swift */; };
 		70B0A96628A8EB612CAC8601 /* NarutoUC2App.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BE676082153870D891E743F /* NarutoUC2App.swift */; };
 		7A684BBD63B441B4DD90CFB4 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = E3D40932FBF68BB18B02A0C0 /* Assets.xcassets */; platformFilters = (tvos, ); };
 		8294D35625D6F06865248C2D /* GameScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9F8E7678C8F8C27B26679CA /* GameScreen.swift */; };
@@ -24,9 +25,10 @@
 /* Begin PBXFileReference section */
 		03BBC75B7F98E5A1AC1FAD29 /* UCKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = UCKit; path = Packages/UCKit; sourceTree = SOURCE_ROOT; };
 		1BE676082153870D891E743F /* NarutoUC2App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NarutoUC2App.swift; sourceTree = "<group>"; };
+		39C89FFFE1D96CC782C25BDB /* GameData */ = {isa = PBXFileReference; lastKnownFileType = folder; path = GameData; sourceTree = SOURCE_ROOT; };
 		6FE58A370F9B5E04CA96322D /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
+		71726A761D6E84DAEB626D72 /* GameLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameLibrary.swift; sourceTree = "<group>"; };
 		8339E4132DBB453FDB460989 /* Frame.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = Frame.metal; sourceTree = "<group>"; };
-		86334EBB649138C15F822505 /* DiscLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscLibrary.swift; sourceTree = "<group>"; };
 		B6B4F77C549003FAAE3C88CB /* MacAppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacAppDelegate.swift; sourceTree = "<group>"; };
 		C9F8E7678C8F8C27B26679CA /* GameScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameScreen.swift; sourceTree = "<group>"; };
 		CFE0B13E13193563C0A3EDB0 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = AppIcon.icon; sourceTree = "<group>"; };
@@ -60,6 +62,7 @@
 		2FC3566E1CC73E9FB8CE37AA = {
 			isa = PBXGroup;
 			children = (
+				39C89FFFE1D96CC782C25BDB /* GameData */,
 				B7E5A8A8864622007D7F92DB /* App */,
 				A66A579E10D5E7B51DCA14B1 /* Packages */,
 				F2FDA51D56A1F90F16BEA4D7 /* Products */,
@@ -69,7 +72,7 @@
 		31CEB235E00FFF617106B348 /* Sources */ = {
 			isa = PBXGroup;
 			children = (
-				86334EBB649138C15F822505 /* DiscLibrary.swift */,
+				71726A761D6E84DAEB626D72 /* GameLibrary.swift */,
 				C9F8E7678C8F8C27B26679CA /* GameScreen.swift */,
 				B6B4F77C549003FAAE3C88CB /* MacAppDelegate.swift */,
 				1BE676082153870D891E743F /* NarutoUC2App.swift */,
@@ -129,6 +132,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = E742A9FB379F7EB881D6900C /* Build configuration list for PBXNativeTarget "NarutoUC2" */;
 			buildPhases = (
+				30DC628B5A7702B66F35AE44 /* Check embedded game data */,
 				CDD609F86D26EC79500AC807 /* Sources */,
 				838BDC43230AB9A92C695F93 /* Resources */,
 				FC31A423C408462995E2F13E /* Frameworks */,
@@ -192,19 +196,44 @@
 			files = (
 				58E03602A69B5C3434AF1459 /* AppIcon.icon in Resources */,
 				7A684BBD63B441B4DD90CFB4 /* Assets.xcassets in Resources */,
+				330C7B20544C1E5AB0C1CAA6 /* GameData in Resources */,
 				239B1E2E59E00ED705DEFA1D /* Localizable.xcstrings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		30DC628B5A7702B66F35AE44 /* Check embedded game data */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/scripts/check_game_data.sh",
+				"$(SRCROOT)/GameData/manifest.json",
+			);
+			name = "Check embedded game data";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"$SRCROOT/scripts/check_game_data.sh\"";
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		CDD609F86D26EC79500AC807 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				13D12FF3FC679604EA000927 /* DiscLibrary.swift in Sources */,
 				E69DE7126C3C4AF42771DEEE /* Frame.metal in Sources */,
+				62D7C4764BA3F2886BE5229D /* GameLibrary.swift in Sources */,
 				8294D35625D6F06865248C2D /* GameScreen.swift in Sources */,
 				28924FA92D0A701A0EAF2F96 /* MacAppDelegate.swift in Sources */,
 				70B0A96628A8EB612CAC8601 /* NarutoUC2App.swift in Sources */,
@@ -360,12 +389,10 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				"ASSETCATALOG_COMPILER_APPICON_NAME[sdk=appletvos*]" = "App Icon & Top Shelf Image";
 				"ASSETCATALOG_COMPILER_APPICON_NAME[sdk=appletvsimulator*]" = "App Icon & Top Shelf Image";
-				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "App/NarutoUC2-macOS.entitlements";
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
-				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = App/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -391,12 +418,10 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				"ASSETCATALOG_COMPILER_APPICON_NAME[sdk=appletvos*]" = "App Icon & Top Shelf Image";
 				"ASSETCATALOG_COMPILER_APPICON_NAME[sdk=appletvsimulator*]" = "App Icon & Top Shelf Image";
-				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "App/NarutoUC2-macOS.entitlements";
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
-				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = App/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (

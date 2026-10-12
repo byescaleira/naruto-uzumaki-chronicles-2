@@ -33,7 +33,7 @@ Projeto em andamento. O que já existe e foi verificado:
 | **Arquivo `CFC*.DIG`** | Índice, compressor próprio e tabela de sub-arquivos decifrados. As **688 entradas dos 10 idiomas** expandem sem nenhuma falha (≈2 s por arquivo, 397 MiB cada). |
 | **Texturas** | Formato das texturas de UI/sprites decifrado, com emulação do *swizzle* da memória do GS: **3651 texturas** extraídas do disco inglês. |
 | **Áudio** | Leitor dos contêineres CRI `AFS` (as faixas ADX ainda não são decodificadas). |
-| **App** | Compila para iOS, iPadOS, macOS e tvOS. Superfície Metal paisagem, de ponta a ponta, a 60 Hz com saída HDR. Na primeira abertura pede o `.iso` do usuário (app Arquivos no iPhone/iPad, Finder no Mac), lê o disco direto da imagem ISO 9660 sem copiar, confere que é o SLES-55090 e mostra os retratos decodificados no aparelho. No Apple TV a importação ainda não existe. |
+| **App** | Compila para iOS, iPadOS, macOS e tvOS. Superfície Metal paisagem, de ponta a ponta, a 60 Hz com saída HDR. Os dados do jogo vêm **embutidos no app** (ver abaixo), em todas as plataformas: o app abre direto, sem pedir arquivo, e mostra os retratos decodificados no aparelho. |
 | **Ainda não** | Modelos 3D, animações, fases, scripts, lógica de jogo, vídeo `MV00.DSI`. |
 
 <p align="center"><img src="docs/images/iphone.png" alt="O app no iPhone 17 Pro: paisagem, sem bordas, inclusive sob a Dynamic Island" width="90%"></p>
@@ -176,9 +176,33 @@ xcodegen generate
 open NarutoUC2.xcodeproj
 ```
 
-Na primeira abertura, o app pede a imagem do seu disco (`.iso`). Ele guarda um bookmark com permissão de segurança
-e lê o arquivo onde ele está, sem copiar os 4 GB. Para desenvolvimento, `NUC2_DATA` no esquema do Xcode (o `.iso` ou
-uma pasta com os arquivos do disco) ou a pasta `NUC2` em Documentos também funcionam.
+### 📀 Dados do jogo embutidos
+
+O app embute uma parte do disco: `SYSTEM.CNF`, `CFC_UK.DIG`, `XA/` com as vozes em inglês e a música, e `MV/`.
+São cerca de 1,1 GB numa pasta `GameData/`. **Esses dados nunca entram neste repositório.**
+
+- [`scripts/make_game_data.sh`](scripts/make_game_data.sh) gera `GameData/` a partir da sua ISO (`uc-tool pack`) e
+  um pacote reprodutível, com o mesmo SHA-256 para o mesmo disco.
+- [`scripts/publish_game_data.sh`](scripts/publish_game_data.sh) envia o pacote como *release* de um repositório
+  **privado**.
+- [`scripts/fetch_game_data.sh`](scripts/fetch_game_data.sh) baixa, confere pelo [`GameData.lock`](GameData.lock)
+  (versão e SHA-256, versionado aqui) e extrai.
+- O build tem uma fase que **falha** se `GameData/` estiver ausente, então nunca sai um app sem o jogo.
+
+```bash
+scripts/make_game_data.sh "<seu disco>.iso"
+```
+
+```bash
+scripts/fetch_game_data.sh
+```
+
+**Xcode Cloud:** [`ci_scripts/ci_post_clone.sh`](ci_scripts/ci_post_clone.sh) baixa o pacote antes do build. No
+workflow, adicione a variável secreta `NUC2_DATA_TOKEN`: um token *fine-grained* do GitHub com acesso somente
+leitura a **Contents** do repositório de dados.
+
+Como o app leva conteúdo do jogo, ele é **só para os seus aparelhos** (build local ou TestFlight interno), não para
+App Store nem para testadores externos. Em builds Debug, `NUC2_DATA` aponta para outra fonte (o `.iso` ou uma pasta).
 
 Verificar todas as entradas de um arquivo `.DIG`:
 
@@ -215,8 +239,8 @@ swift test --package-path Packages/UCKit
 
 - **Naruto: Uzumaki Chronicles 2** © Masashi Kishimoto / Shueisha · TV Tokyo · Pierrot, publicado pela Namco Bandai
   Games. Naruto e os personagens são marcas dos seus donos. Este é um projeto pessoal, sem fins comerciais e sem
-  relação com os detentores dos direitos. **Nenhum dado do jogo é distribuído neste repositório**: o app lê o disco
-  do próprio usuário. As imagens desta página e o ícone foram gerados pelo projeto a partir de um disco original.
+  relação com os detentores dos direitos. **Nenhum dado do jogo é distribuído neste repositório**: os builds embutem
+  dados extraídos do disco original do dono, guardados num repositório privado, e servem só aos aparelhos dele. As imagens desta página e o ícone foram gerados pelo projeto a partir de um disco original.
 - [REA](https://github.com/morluto/rea) por morluto e contribuidores.
 - [Ghidra](https://github.com/NationalSecurityAgency/ghidra) (NSA) e
   [ghidra-emotionengine-reloaded](https://github.com/chaoticgd/ghidra-emotionengine-reloaded) por chaoticgd.

@@ -15,3 +15,6 @@ DerivedData/
 *.xcodeproj/xcuserdata/
 *.xcodeproj/project.xcworkspace/xcuserdata/
 .DS_Store
+
+# Embedded game data: private package (scripts/fetch_game_data.sh). GameData.lock is committed.
+GameData/
