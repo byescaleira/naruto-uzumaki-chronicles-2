@@ -7,7 +7,7 @@ struct FrameUniforms {
     float time;             // seconds since start (fixed 60 Hz steps)
     float sdrWhiteNits;     // nits that 1.0 maps to on PQ output
     float headroom;         // EDR headroom (max linear value) on extended-linear output
-    uint outputMode;        // 0 = extended linear Display P3 (EDR), 1 = PQ BT.2100 (HDR10)
+    uint outputMode;        // 0 = extended linear Display P3 (EDR), 1 = PQ BT.2100 (HDR10), 2 = sRGB (SDR)
     float2 padding;
 };
 
@@ -76,11 +76,21 @@ static float3 pq_encode(float3 y) {
     return pow((c1 + c2 * p) / (1.0 + c3 * p), m2);
 }
 
-// Smooth shoulder that keeps SDR untouched and rolls highlights into [1, peak].
+// sRGB transfer for the SDR path (layer: bgra8Unorm, sRGB colorspace).
+static float3 srgb_encode(float3 c) {
+    c = saturate(c);
+    return select(1.055 * pow(c, 1.0 / 2.4) - 0.055, c * 12.92, c <= 0.0031308);
+}
+
+// Highlight rolloff: identity up to the knee, then an exponential shoulder that approaches
+// `peak` without clipping. With HDR headroom (peak > 1.25) the knee sits at SDR white, so SDR
+// content is untouched; on SDR outputs (peak = 1) the knee drops to 0.8 so highlights roll
+// off instead of clipping flat.
 static float3 shoulder(float3 c, float peak) {
-    float3 over = max(c - 1.0, 0.0);
-    float range = max(peak - 1.0, 1e-4);
-    return min(c, 1.0) + range * (1.0 - exp(-over / range));
+    float knee = min(1.0, 0.8 * peak);
+    float range = max(peak - knee, 1e-4);
+    float3 over = max(c - knee, 0.0);
+    return min(c, knee) + range * (1.0 - exp(-over / range));
 }
 
 fragment float4 output_fragment(FullscreenOut in [[stage_in]],
@@ -91,6 +101,10 @@ fragment float4 output_fragment(FullscreenOut in [[stage_in]],
     if (u.outputMode == 0) {
         // Extended linear Display P3: 1.0 = SDR white, values above 1.0 use EDR headroom.
         return float4(shoulder(BT709_TO_P3 * c, u.headroom), 1.0);
+    }
+    if (u.outputMode == 2) {
+        // SDR: roll highlights into white instead of clipping, then encode sRGB.
+        return float4(srgb_encode(shoulder(c, 1.0)), 1.0);
     }
     // PQ BT.2100 (HDR10 signal; tvOS maps it into the TV's HDR10 / Dolby Vision mode).
     float peakNits = 1000.0;

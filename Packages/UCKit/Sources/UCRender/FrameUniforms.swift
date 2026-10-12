@@ -1,6 +1,6 @@
 import simd
 
-/// Mirrors `FrameUniforms` in Shaders/Frame.metal (32 bytes).
+/// Mirrors `FrameUniforms` in App/Shaders/Frame.metal (32 bytes).
 public struct FrameUniforms: Sendable {
     public var resolution: SIMD2<Float>
     public var time: Float
@@ -23,8 +23,10 @@ public struct HDROutput: Sendable, Equatable {
     public enum Mode: UInt32, Sendable {
         /// Extended linear Display P3 with EDR (iOS, iPadOS, macOS).
         case extendedLinearP3 = 0
-        /// PQ BT.2100 / HDR10 signal (tvOS).
+        /// PQ BT.2100 / HDR10 signal (tvOS with an HDR TV).
         case pq = 1
+        /// sRGB (tvOS with an SDR TV).
+        case sdr = 2
     }
 
     public var mode: Mode

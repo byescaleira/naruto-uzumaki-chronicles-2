@@ -7,6 +7,8 @@ options:
     macOS: "26.0"
     tvOS: "26.0"
   createIntermediateGroups: true
+  # Marks the project as up to date with Xcode 27 (no "Update to recommended settings").
+  xcodeVersion: "27.0"
 
 packages:
   UCKit:
@@ -19,6 +21,13 @@ settings:
     DEVELOPMENT_TEAM: ""
     CODE_SIGN_STYLE: Automatic
     ENABLE_USER_SCRIPT_SANDBOXING: YES
+    # Xcode 27 recommended settings (Base_ProjectSettings template).
+    DEAD_CODE_STRIPPING: YES
+    LOCALIZATION_PREFERS_STRING_CATALOGS: YES
+    STRING_CATALOG_GENERATE_SYMBOLS: YES
+    ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS: YES
+    CLANG_WARN_DOCUMENTATION_COMMENTS: YES
+    MTL_FAST_MATH: YES
 
 targets:
   NarutoUC2:
@@ -26,6 +35,8 @@ targets:
     supportedDestinations: [iOS, macOS, tvOS]
     sources:
       - path: App/Sources
+      # Metal shaders for UCRender, compiled into the app's default.metallib.
+      - path: App/Shaders
       # Icon Composer icon (iOS, iPadOS, macOS); layers built from game textures by re/scripts/MakeIcon.swift.
       - path: App/AppIcon.icon
         type: file
@@ -53,14 +64,17 @@ targets:
         UIApplicationSupportsIndirectInputEvents: true
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: true
-        # Landscape only, always full screen.
+        # Landscape only. iPhone declares it here; iPadOS 26 resizable scenes must declare every
+        # orientation, so iPad locks to landscape at runtime (GameViewController) and keeps the
+        # scene at screen size (UISceneSizeRestrictions) instead of the deprecated UIRequiresFullScreen.
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
         UISupportedInterfaceOrientations~ipad:
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
-        UIRequiresFullScreen: true
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
         UIStatusBarHidden: true
         UIViewControllerBasedStatusBarAppearance: true
         UILaunchScreen:
@@ -74,6 +88,8 @@ targets:
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
         GENERATE_INFOPLIST_FILE: NO
+        # The app defines no App Intents: skip the metadata extraction step.
+        LM_SKIP_METADATA_EXTRACTION: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         "ASSETCATALOG_COMPILER_APPICON_NAME[sdk=appletvos*]": "App Icon & Top Shelf Image"
         "ASSETCATALOG_COMPILER_APPICON_NAME[sdk=appletvsimulator*]": "App Icon & Top Shelf Image"

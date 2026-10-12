@@ -21,9 +21,9 @@ let package = Package(
             swiftSettings: [.enableUpcomingFeature("ExistentialAny")]
         ),
         // Metal renderer: Metal 4 on iOS/iPadOS/macOS, Metal on tvOS; HDR output on all.
+        // Its shaders (App/Shaders) are compiled by the app target into the app's default.metallib.
         .target(
             name: "UCRender",
-            resources: [.process("Shaders")],
             swiftSettings: [.enableUpcomingFeature("ExistentialAny")]
         ),
         // Game runtime: fixed-step loop, input, game state.
@@ -41,6 +41,10 @@ let package = Package(
         .testTarget(
             name: "UCFormatsTests",
             dependencies: ["UCFormats"]
+        ),
+        .testTarget(
+            name: "UCEngineTests",
+            dependencies: ["UCEngine"]
         ),
     ]
 )

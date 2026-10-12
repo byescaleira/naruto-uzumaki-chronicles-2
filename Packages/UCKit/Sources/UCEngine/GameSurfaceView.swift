@@ -1,5 +1,11 @@
 import QuartzCore
 import UCRender
+#if DEBUG
+import os
+#endif
+#if os(tvOS)
+import AVFoundation
+#endif
 #if os(macOS)
 import AppKit
 public typealias PlatformView = NSView
@@ -15,6 +21,8 @@ public final class GameSurfaceView: PlatformView {
 
     private let metalLayer = CAMetalLayer()
     private var renderer: (any Renderer)?
+    /// The output the layer, pipelines and shader were configured for; they always change together.
+    private var outputMode = HDRLayer.outputMode
     private var displayLink: CAMetalDisplayLink?
     private let runtime: GameRuntime
 
@@ -28,12 +36,37 @@ public final class GameSurfaceView: PlatformView {
         metalLayer.frame = bounds
         layer.addSublayer(metalLayer)
         #endif
+        makeRenderer()
+        #if os(tvOS)
+        // The TV (or its HDR setting) can change while the app runs.
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(hdrEligibilityChanged),
+            name: AVPlayer.eligibleForHDRPlaybackDidChangeNotification, object: nil
+        )
+        #endif
+    }
+
+    private func makeRenderer() {
+        outputMode = HDRLayer.outputMode
         do {
-            renderer = try RendererFactory.make(for: metalLayer)
+            renderer = try RendererFactory.make(for: metalLayer, mode: outputMode)
         } catch {
             assertionFailure("Renderer unavailable: \(error)")
         }
+        #if os(tvOS)
+        if let window { DisplayMode.request(for: window, output: outputMode) }
+        #endif
     }
+
+    #if os(tvOS)
+    /// Posted on an arbitrary thread; the renderer is rebuilt on the main actor.
+    @objc nonisolated private func hdrEligibilityChanged() {
+        Task { @MainActor in
+            guard HDRLayer.outputMode != self.outputMode else { return }
+            self.makeRenderer()
+        }
+    }
+    #endif
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
@@ -50,6 +83,13 @@ public final class GameSurfaceView: PlatformView {
         super.viewDidMoveToWindow()
         window == nil ? stop() : start()
     }
+
+    /// Moving the window to a display with another scale must resize the drawable, or the
+    /// image is resampled (blurry) by the compositor.
+    override public func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        updateDrawableSize()
+    }
     #else
     override public func layoutSubviews() {
         super.layoutSubviews()
@@ -60,6 +100,9 @@ public final class GameSurfaceView: PlatformView {
     override public func didMoveToWindow() {
         super.didMoveToWindow()
         window == nil ? stop() : start()
+        #if os(tvOS)
+        if let window { DisplayMode.request(for: window, output: outputMode) }
+        #endif
     }
     #endif
 
@@ -81,15 +124,18 @@ public final class GameSurfaceView: PlatformView {
         }
     }
 
+    /// Read every frame: the headroom available *now* (it drops with screen brightness, Low
+    /// Power Mode or other EDR content), not the potential maximum, so highlights are never
+    /// rendered brighter than the display will show and then clipped by the compositor.
     private var hdrOutput: HDROutput {
         #if os(macOS)
         let headroom = window?.screen?.maximumExtendedDynamicRangeColorComponentValue ?? 1
-        return HDROutput(mode: HDRLayer.outputMode, headroom: Float(headroom))
+        return HDROutput(mode: outputMode, headroom: Float(headroom))
         #elseif os(tvOS)
-        return HDROutput(mode: HDRLayer.outputMode)
+        return HDROutput(mode: outputMode)
         #else
         let headroom = window?.screen.currentEDRHeadroom ?? 1
-        return HDROutput(mode: HDRLayer.outputMode, headroom: Float(headroom))
+        return HDROutput(mode: outputMode, headroom: Float(headroom))
         #endif
     }
 
@@ -111,9 +157,20 @@ public final class GameSurfaceView: PlatformView {
     }
 
     fileprivate func draw(_ update: CAMetalDisplayLink.Update) {
+        #if DEBUG
+        let started = CACurrentMediaTime()
+        #endif
         runtime.advance(to: update.targetPresentationTimestamp)
         renderer?.render(runtime.frame(output: hdrOutput), to: update.drawable)
+        #if DEBUG
+        stats.record(time: update.targetPresentationTimestamp, tick: runtime.tick, pacer: runtime.pacer,
+                     output: hdrOutput, frameCPU: CACurrentMediaTime() - started, frameGPU: renderer?.lastGPUTime ?? 0)
+        #endif
     }
+
+    #if DEBUG
+    private var stats = PacingStats()
+    #endif
 }
 
 extension GameSurfaceView: CAMetalDisplayLinkDelegate {
@@ -123,3 +180,38 @@ extension GameSurfaceView: CAMetalDisplayLinkDelegate {
         MainActor.assumeIsolated { draw(update) }
     }
 }
+
+#if DEBUG
+/// Logs real pacing every two seconds (Console / `log stream --predicate 'subsystem == "com.byescaleira.nuc2"'`).
+private struct PacingStats {
+    private static let logger = Logger(subsystem: "com.byescaleira.nuc2", category: "pacing")
+    private var windowStart: Double?
+    private var startTick: UInt64 = 0
+    private var frames = 0
+    private var cpu = 0.0
+    private var gpu = 0.0
+
+    mutating func record(time: Double, tick: UInt64, pacer: FramePacer, output: HDROutput, frameCPU: Double, frameGPU: Double) {
+        guard let start = windowStart else {
+            windowStart = time
+            startTick = tick
+            return
+        }
+        frames += 1
+        cpu += frameCPU
+        gpu += frameGPU
+        let elapsed = time - start
+        guard elapsed >= 2 else { return }
+        let fps = Double(frames) / elapsed
+        let tps = Double(tick - startTick) / elapsed
+        let refresh = String(format: "%.2f", pacer.refreshRate)
+        let message = String(format: "display %.2f fps, game %.2f ticks/s, frame CPU %.2f ms, GPU %.2f ms", fps, tps, cpu / Double(frames) * 1000, gpu / Double(frames) * 1000)
+        Self.logger.info("\(message, privacy: .public), refresh \(refresh, privacy: .public) Hz, vsync lock \(pacer.isVsyncLocked), output \(output.mode.rawValue) headroom \(output.headroom)")
+        windowStart = time
+        startTick = tick
+        frames = 0
+        cpu = 0
+        gpu = 0
+    }
+}
+#endif

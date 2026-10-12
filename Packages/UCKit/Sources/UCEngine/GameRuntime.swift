@@ -9,16 +9,16 @@ import UCRender
 /// the frame rate they assume before reuse.
 @MainActor
 public final class GameRuntime {
-    public static let tickRate = 60.0
-    public static let tickDuration = 1.0 / tickRate
+    public static let tickRate = FramePacer.tickRate
+    public static let tickDuration = FramePacer.tickDuration
 
     public private(set) var tick: UInt64 = 0
     public private(set) var input = InputState()
     public let data: GameData?
+    /// Pacing state, exposed for a performance readout (measured refresh, vsync lock).
+    public private(set) var pacer = FramePacer()
 
     private let inputSource = InputSource()
-    private var accumulator = 0.0
-    private var lastHostTime: Double?
 
     public init(data: GameData?) {
         self.data = data
@@ -26,16 +26,12 @@ public final class GameRuntime {
 
     public var time: Double { Double(tick) * Self.tickDuration }
 
-    /// Advances the simulation up to `hostTime` (seconds, display link clock).
-    public func advance(to hostTime: Double) {
-        defer { lastHostTime = hostTime }
-        guard let last = lastHostTime else { return }
-        // Clamp long stalls (app switch, breakpoint) instead of fast-forwarding.
-        accumulator += min(hostTime - last, 0.25)
-        while accumulator >= Self.tickDuration {
+    /// Advances the simulation for a refresh presented at `presentationTime`
+    /// (seconds, display link clock); see ``FramePacer`` for the pacing rules.
+    public func advance(to presentationTime: Double) {
+        for _ in 0 ..< pacer.ticks(at: presentationTime) {
             input = inputSource.sample()
             step()
-            accumulator -= Self.tickDuration
         }
     }
 

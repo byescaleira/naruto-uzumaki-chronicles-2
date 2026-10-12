@@ -51,10 +51,23 @@ final class GameViewController: UIViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        #if os(tvOS)
-        if let window = view.window { DisplayMode.request4KHDR60(for: window) }
+        #if os(iOS)
+        keepSceneFullScreen()
         #endif
     }
+
+    #if os(iOS)
+    /// iPadOS 26 windowing can resize the scene; asking for the full screen size as the minimum
+    /// keeps the game edge to edge (UIRequiresFullScreen, the old way, is deprecated).
+    private func keepSceneFullScreen() {
+        guard traitCollection.userInterfaceIdiom == .pad, let scene = view.window?.windowScene else { return }
+        let bounds = scene.screen.bounds
+        scene.sizeRestrictions?.minimumSize = CGSize(
+            width: max(bounds.width, bounds.height),
+            height: min(bounds.width, bounds.height)
+        )
+    }
+    #endif
 
     #if os(iOS)
     override var supportedInterfaceOrientations: UIInterfaceOrientationMask { .landscape }

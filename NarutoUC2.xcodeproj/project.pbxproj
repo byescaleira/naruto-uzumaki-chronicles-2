@@ -9,19 +9,19 @@
 /* Begin PBXBuildFile section */
 		085A4EA9334CDE45B2027B00 /* UCEngine in Frameworks */ = {isa = PBXBuildFile; productRef = 320BE2057B97C0C3840D7808 /* UCEngine */; };
 		173EA88543DC63E995AD129D /* UCFormats in Frameworks */ = {isa = PBXBuildFile; productRef = 89102883FE9DEBC74C17EB30 /* UCFormats */; };
-		1E7EDDC4CC9B9273CAFEA466 /* DisplayMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FFF312E6A3E419F92BCD8E0 /* DisplayMode.swift */; };
 		28924FA92D0A701A0EAF2F96 /* MacAppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6B4F77C549003FAAE3C88CB /* MacAppDelegate.swift */; };
 		58E03602A69B5C3434AF1459 /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = CFE0B13E13193563C0A3EDB0 /* AppIcon.icon */; platformFilters = (ios, macos, ); };
 		70B0A96628A8EB612CAC8601 /* NarutoUC2App.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BE676082153870D891E743F /* NarutoUC2App.swift */; };
 		7A684BBD63B441B4DD90CFB4 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = E3D40932FBF68BB18B02A0C0 /* Assets.xcassets */; platformFilters = (tvos, ); };
 		8294D35625D6F06865248C2D /* GameScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9F8E7678C8F8C27B26679CA /* GameScreen.swift */; };
 		A7D86CA8BD46368FD3EE9BD2 /* UCRender in Frameworks */ = {isa = PBXBuildFile; productRef = 61ABCF3B002590C63638C640 /* UCRender */; };
+		E69DE7126C3C4AF42771DEEE /* Frame.metal in Sources */ = {isa = PBXBuildFile; fileRef = 8339E4132DBB453FDB460989 /* Frame.metal */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		03BBC75B7F98E5A1AC1FAD29 /* UCKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = UCKit; path = Packages/UCKit; sourceTree = SOURCE_ROOT; };
 		1BE676082153870D891E743F /* NarutoUC2App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NarutoUC2App.swift; sourceTree = "<group>"; };
-		7FFF312E6A3E419F92BCD8E0 /* DisplayMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DisplayMode.swift; sourceTree = "<group>"; };
+		8339E4132DBB453FDB460989 /* Frame.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = Frame.metal; sourceTree = "<group>"; };
 		B6B4F77C549003FAAE3C88CB /* MacAppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacAppDelegate.swift; sourceTree = "<group>"; };
 		C9F8E7678C8F8C27B26679CA /* GameScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameScreen.swift; sourceTree = "<group>"; };
 		CFE0B13E13193563C0A3EDB0 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = AppIcon.icon; sourceTree = "<group>"; };
@@ -55,12 +55,19 @@
 		31CEB235E00FFF617106B348 /* Sources */ = {
 			isa = PBXGroup;
 			children = (
-				7FFF312E6A3E419F92BCD8E0 /* DisplayMode.swift */,
 				C9F8E7678C8F8C27B26679CA /* GameScreen.swift */,
 				B6B4F77C549003FAAE3C88CB /* MacAppDelegate.swift */,
 				1BE676082153870D891E743F /* NarutoUC2App.swift */,
 			);
 			path = Sources;
+			sourceTree = "<group>";
+		};
+		6AE78C51906C01EE465FDB92 /* Shaders */ = {
+			isa = PBXGroup;
+			children = (
+				8339E4132DBB453FDB460989 /* Frame.metal */,
+			);
+			path = Shaders;
 			sourceTree = "<group>";
 		};
 		90AC9D59B01AF7C97B4F5F5C /* tvOS */ = {
@@ -83,6 +90,7 @@
 			isa = PBXGroup;
 			children = (
 				CFE0B13E13193563C0A3EDB0 /* AppIcon.icon */,
+				6AE78C51906C01EE465FDB92 /* Shaders */,
 				31CEB235E00FFF617106B348 /* Sources */,
 				90AC9D59B01AF7C97B4F5F5C /* tvOS */,
 			);
@@ -129,7 +137,7 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
-				LastUpgradeCheck = 1430;
+				LastUpgradeCheck = 2700;
 				TargetAttributes = {
 					B6D76E159BE78524947C2E49 = {
 						DevelopmentTeam = "";
@@ -176,7 +184,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				1E7EDDC4CC9B9273CAFEA466 /* DisplayMode.swift in Sources */,
+				E69DE7126C3C4AF42771DEEE /* Frame.metal in Sources */,
 				8294D35625D6F06865248C2D /* GameScreen.swift in Sources */,
 				28924FA92D0A701A0EAF2F96 /* MacAppDelegate.swift in Sources */,
 				70B0A96628A8EB612CAC8601 /* NarutoUC2App.swift in Sources */,
@@ -190,6 +198,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
@@ -221,6 +230,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -241,12 +251,14 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_STRICT_CONCURRENCY = complete;
@@ -259,6 +271,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
@@ -290,6 +303,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = "";
 				ENABLE_NS_ASSERTIONS = NO;
@@ -304,11 +318,13 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_STRICT_CONCURRENCY = complete;
@@ -334,6 +350,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				LM_SKIP_METADATA_EXTRACTION = YES;
 				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.byescaleira.nuc2;
 				PRODUCT_NAME = NarutoUC2;
@@ -363,6 +380,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				LM_SKIP_METADATA_EXTRACTION = YES;
 				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.byescaleira.nuc2;
 				PRODUCT_NAME = NarutoUC2;

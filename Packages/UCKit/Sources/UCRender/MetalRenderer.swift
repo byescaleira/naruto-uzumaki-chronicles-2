@@ -1,6 +1,7 @@
 #if os(tvOS) || targetEnvironment(simulator)
 import Metal
 import QuartzCore
+import Synchronization
 
 /// Classic Metal renderer for tvOS (no Metal 4 in the tvOS SDK) and the Simulator (whose
 /// SDK ships empty Metal 4 headers): HDR scene target → output transform.
@@ -14,14 +15,17 @@ final class MetalRenderer: Renderer {
     private let outputPipeline: any MTLRenderPipelineState
     private let inFlight = DispatchSemaphore(value: MetalRenderer.framesInFlight)
     private var sceneTarget: (any MTLTexture)?
+    private let gpuClock = GPUClock()
 
-    init(device: any MTLDevice, layer: CAMetalLayer) throws {
+    /// GPU time of the most recently completed frame, in seconds.
+    var lastGPUTime: Double { gpuClock.seconds.withLock { $0 } }
+
+    init(device: any MTLDevice, library: any MTLLibrary, layer: CAMetalLayer) throws {
         self.device = device
         guard let queue = device.makeCommandQueue() else {
             throw RendererError.resourceCreation("command queue")
         }
         self.queue = queue
-        let library = try device.makeDefaultLibrary(bundle: .module)
         scenePipeline = try Self.pipeline(device, library, fragment: "boot_scene_fragment", format: HDRLayer.sceneFormat)
         outputPipeline = try Self.pipeline(device, library, fragment: "output_fragment", format: layer.pixelFormat)
     }
@@ -68,7 +72,11 @@ final class MetalRenderer: Renderer {
             return
         }
         let semaphore = inFlight
-        commandBuffer.addCompletedHandler { _ in semaphore.signal() }
+        let gpuClock = gpuClock
+        commandBuffer.addCompletedHandler { buffer in
+            gpuClock.seconds.withLock { $0 = buffer.gpuEndTime - buffer.gpuStartTime }
+            semaphore.signal()
+        }
 
         var values = FrameUniforms(
             resolution: SIMD2(Float(target.width), Float(target.height)),
@@ -104,5 +112,10 @@ final class MetalRenderer: Renderer {
         commandBuffer.present(drawable)
         commandBuffer.commit()
     }
+}
+
+/// Written by the command buffer's completion handler (any thread), read on the main actor.
+private final class GPUClock: Sendable {
+    let seconds = Mutex(0.0)
 }
 #endif

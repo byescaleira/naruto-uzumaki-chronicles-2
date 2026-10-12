@@ -20,7 +20,10 @@ final class Metal4Renderer: Renderer {
     private var sceneTarget: (any MTLTexture)?
     private var frameIndex: UInt64 = 0
 
-    init(device: any MTLDevice, layer: CAMetalLayer) throws {
+    /// Not measured on the Metal 4 path yet (would need an MTL4 counter heap).
+    var lastGPUTime: Double { 0 }
+
+    init(device: any MTLDevice, library: any MTLLibrary, layer: CAMetalLayer) throws {
         self.device = device
         guard let queue = device.makeMTL4CommandQueue(),
               let commandBuffer = device.makeCommandBuffer(),
@@ -56,7 +59,6 @@ final class Metal4Renderer: Renderer {
         queue.addResidencySet(residency)
         queue.addResidencySet(layer.residencySet)
 
-        let library = try device.makeDefaultLibrary(bundle: .module)
         let compiler = try device.makeCompiler(descriptor: MTL4CompilerDescriptor())
         scenePipeline = try Self.pipeline(compiler, library, fragment: "boot_scene_fragment", format: HDRLayer.sceneFormat)
         outputPipeline = try Self.pipeline(compiler, library, fragment: "output_fragment", format: layer.pixelFormat)
