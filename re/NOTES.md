@@ -145,3 +145,9 @@ aspect is 7:6 and the stream's "square samples" flag is wrong.
 
 `UCFormats.DSIMovie` demuxes it, `MPEGVideoStream` summarises the video, `SPUADPCMDecoder`
 decodes the audio; `uc-tool movie info|convert` (package time, ffmpeg) makes the HEVC/AAC file.
+Default output: 512×448 HEVC Main10 (`hvc1`, CRF 18, 7:6 pixel aspect → AVFoundation presents
+597⅓×448), BT.709 tags, 25 fps, AAC-LC 192 kbit/s 48 kHz stereo, faststart MP4: 24,976,508
+bytes for MV00 (vs 53,739,520 for the DSI), byte-identical across runs; 2732 frames,
+109.28 s video / 109.29 s audio (AAC priming handled by the edit list: 0-sample offset
+against the decoded PCM), RGB SSIM 0.965 against the MPEG-2 source. `--height 1080`
+pre-scales to 1440×1080 instead (61 MB at CRF 20).
