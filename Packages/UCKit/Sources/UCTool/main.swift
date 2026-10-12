@@ -14,6 +14,9 @@ import UniformTypeIdentifiers
 //   uc-tool disc info   <disc.iso | disc-folder>
 //   uc-tool tex extract <disc.iso | disc-folder> <out-dir> <entry> <subfile> [archive=CFC_UK.DIG]
 //   uc-tool pack        <disc.iso> <out-dir>   — the files the app embeds (GameData/)
+//   uc-tool model scan   <CFC.DIG> [sheet.png]
+//   uc-tool model info   <CFC.DIG> <entry> <subfile>
+//   uc-tool model export <CFC.DIG> <entry> <subfile> <out-dir>   — OBJ + MTL + PNG textures + render
 
 func fail(_ message: String) -> Never {
     FileHandle.standardError.write(Data((message + "\n").utf8))
@@ -171,6 +174,22 @@ case ("pack", _):
     let json = try JSONSerialization.data(withJSONObject: ["format": GamePack.format, "source": DiscImage.expectedExecutable, "files": manifest],
                                           options: [.prettyPrinted, .sortedKeys])
     try json.write(to: out.appending(path: "manifest.json"))
+
+case ("model", "scan"):
+    try ModelTool.scan(archive: archiveURL, sheet: arguments.count > 3 ? URL(fileURLWithPath: arguments[3]) : nil)
+
+case ("model", "info"), ("model", "export"):
+    guard arguments.count >= 5, let entryIndex = Int(arguments[3]), let subfileIndex = Int(arguments[4]) else {
+        fail("usage: uc-tool model (info|export) <CFC.DIG> <entry> <subfile> [out-dir]")
+    }
+    let loaded = try ModelTool.load(archive: archiveURL, entry: entryIndex, subfile: subfileIndex)
+    if arguments[1] == "info" {
+        try ModelTool.info(loaded)
+    } else {
+        guard arguments.count >= 6 else { fail("usage: uc-tool model export <CFC.DIG> <entry> <subfile> <out-dir>") }
+        try ModelTool.export(loaded, to: URL(fileURLWithPath: arguments[5], isDirectory: true),
+                             name: String(format: "%04d_%02d", entryIndex, subfileIndex))
+    }
 
 default:
     fail("unknown command: \(arguments[0]) \(arguments[1])")

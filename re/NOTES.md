@@ -73,7 +73,7 @@ empty sub-files may share an offset; entries are 16-byte padded at the end.
 ## Open questions / next targets
 
 - Sub-file formats: palettes (`*_3d` alpha ≤ 0x80, PS2 GS convention) seen in entry 1;
-  identify textures (TIM2/raw GS), models (VIF/GIF packets), motions (`"old motion file"`
+  identify textures (TIM2/raw GS), motions (`"old motion file"`
   string), scripts, text.
 - What reads each entry: trace callers of the request API (`FUN_001292e0` queue producers).
 - `MV00.DSI` container and codec.
@@ -104,3 +104,110 @@ python3 -I re/scripts/contact.py <dig-extract-dir> <tex-out-dir> 64
 swiftc -O re/scripts/MakeIcon.swift -o .build/make-icon
 .build/make-icon <tex-out-dir>/0039_00_001.png <tex-out-dir>/0216_00_004.png .
 ```
+
+## 3D models (character / stage sub-files)
+
+Decoded by `ModelFile` / `ModelGeometry` / `ModelTextureTable` / `VIF` (UCFormats);
+`uc-tool model scan|info|export`. 78 models in `CFC_UK.DIG`, all decoding with consistent skinning.
+
+### Sectioned files
+
+`u32 count` + `count × {u32 offset, u32 size}` (offsets relative to the sub-file). The first word
+is therefore the section count, not a type: 0x14 (characters `0119…0144/00`) and 0x17 (entries
+`0007…0009`, `0147…0219/00`, story/enemy/boss sets). `FUN_001bf610(file, i)` returns
+`file + offset[i]` (null when out of range or zero). `FUN_001b7640` binds an actor:
+
+| Section | Consumer | Content |
+| --- | --- | --- |
+| 0 | `FUN_0013e360` → `FUN_0013e3b0` → `FUN_0033f978` | skinned model (below) |
+| 1 | same call (texture table) | materials + textures |
+| 2 | `FUN_0013daf0` | motion: magic `"Mt"` (0x744D), version 0x01FF, coord count must match (`"No Match Model Coord"`) |
+| 3 / 4 | `FUN_00139d40` / `FUN_00139d10` | ? |
+| 5 | `FUN_0013d800`, `FUN_0013d730` | probably a UV-scroll table (`{u16 count, 12-byte records}`, stored at obj+0x1E4) |
+| 6, 7, 0xF/0x10, 0x15, 0x16 | `FUN_0013e070`, `FUN_0013de50`, `FUN_0013dd50`, `FUN_0013da70`, `FUN_0013dac0` | ? |
+| 9, 10 | `FUN_001b9f50` (0xF0-byte obj), `FUN_001baa40` (0xB0) | ? |
+| 0xC, 0x12–0x14, 0x17–0x19 | `FUN_0016fdc0` (0xBC-byte obj each) | effect attachments? |
+
+### Model section (section 0)
+
+Header `{u32 partTable, u32 partCount, u32 boneCount, u32 ?(10)}`; `FUN_0033f978` stores
+`coords = +0x10`, `parents = +0x10 + 0x40·boneCount`, `parts = +partTable`.
+
+- **Bone (coord), 0x40 bytes:** `quat{x,y,z,w}`, `scale{x,y,z,1}`, `{0,0,0,1}` (unused so far),
+  `translation{x,y,z,1}`. Parents: `i16` per bone, −1 = root (always `parent < index`).
+- **Pose:** `FUN_00139a30` builds `FUN_00340d30(quat, scale, translation)` matrices and chains
+  them `M_i = M_i × M_parent` with `FUN_00341c10` (row vectors, `v · M`). With column vectors
+  this is `world = parent · T · R(q̄) · S` — the stored quaternion acts as its **conjugate**.
+  The world is Y-down (feet at y = 0, Naruto's head at y ≈ −15).
+- **Part, 0x20 bytes:** `+0 commands`, `+4 VIF data`, `+8 bounding points (16 B each)`,
+  `+0xC bounding bone list (u32)`, `+0x10 u16 bounding count`, `+0x16 u8 material table select`,
+  `+0x17 u8 binding count`, `+0x18 bindings {u16 material, u16 slot}`, `+0x1C u32 colour (0x80282828)`.
+- **Commands** (`FUN_0013a9c0`, also library twin `FUN_0033e7f0`, unused): 6-byte records
+  `{u8 kind, u8 slot, u16 index, u16 qwc}` until kind 0. For each, the EE emits a DMA CNT with an
+  injected UNPACK, then a DMA REF of the next `qwc` quadwords of the part's VIF data:
+  1 = 6 per-draw words + MSCAL 0x58; 2 = bone matrix `mats[index]` (4 qw) to VU addr 1;
+  3 = normal matrix (3 qw, `+index·0x30`); 4/7 = material GIF packet of texture slot `slot`
+  (`DAT_00548650[slot]`, filled by `FUN_0013a490`/`FUN_0013a710` from the bindings, which also
+  upload the texture via `FUN_001d06e0`); 5 = engine packet `FUN_001cfe70(index)`; 6 = 1 qw per
+  bone; 8 = environment matrix (3 qw, `+index·0x40`).
+
+### VU1 microcode and the packet language
+
+`FUN_001c46b0` (frame builder) DMAs a REF of 0x3E0 qw at `0x344400` once: VIF BASE/OFFSET,
+GIF templates, then MPGs from `0x344570` (microcode ≈ `0x344578…0x348200`). Draw callbacks hang
+from an ordering table at `0x54EEE0` (0x65F buckets). The microcode itself was not disassembled;
+its programs were modelled from the packets and validated numerically (all multi-bone vertices
+land on one point from every bone: max spread 0.07 units over all 78 models, 0 on Naruto).
+
+Each MSCAL reads a header at VU qw 0; two arrays are interleaved with STCYCL 2,1
+(odd qw = vector, even qw = index):
+
+| MSCAL | Header | Records | Effect |
+| --- | --- | --- | --- |
+| 0x2E / 0x06 / 0x54 | V4-8 `{n, slot}` | — | store injected bone / normal / environment matrix at VU addr `slot` |
+| 0x02, 0x04 / 0x1A, 0x1C | V4-8 `{n, slot, accumulate}` | S-8 dest idx, V4-32 `{x·w, y·w, z·w, w}` | `acc[idx] (+)= M_slot · v` (weight premultiplied, so the homogeneous product sums to the skinned point) |
+| 0x08 / 0x0A | V4-8 `{n}` | S-8 idx | commit `acc[idx]` to the vertex table (transform/project) |
+| 0x20 / 0x22 | V4-8 `{n, slot, 11, accumulate}` | V4-32 `{nx, ny, nz, int idx}` | normals through normal-matrix slot |
+| 0x12 | V2-8 `{n, 15}` | V2-8 `{normal, colour}` | light a normal into colour slot |
+| 0x24 / 0x28 | V2-8 / S-8 | + V4-32 RGBA (alpha 0x80 = 1) | lit colour with base RGBA / RGBA only |
+| 0x0C | S-32 `{n}` | V3-32 `{s, t, int idx}` | UV table |
+| 0x50, 0x4E / 0x52 | V2-32 scale / V4-8 `{n, slot}` | V4-32 `{n, int idx}` | sphere-map UVs from normals |
+| 0x18 | V3-8 `{nTri}` | V3-8 `{vertex, colour, uv}` × 3·nTri | draw textured triangles (≤ 16 per batch) |
+| 0x4C | V2-8 `{nTri}` | V2-8 `{vertex, colour}` | draw untextured triangles (PRMODE without TME) |
+| 0x5C / 0x5E | — | — | enter / leave the additive environment pass (ALPHA 0x48 vs 0x44) |
+| 0x14 | V4-32 GIFtag + A+D | — | GIF kick: PRMODECONT, PRMODE (0x78 = IIP+TME+FGE+ABE), ALPHA_1, material TEX0… |
+| 0x2A, 0x32, 0x3C/0x3E/0x40, 0x58 | V4-32 / V3-32 | — | colour (255,255,255,128) / scale (1,1,1) constants, per-draw header |
+| 0x26 | S-8 `{1, 0}` | — | unknown (34 calls, ignored) |
+
+The tables persist across batches inside a part: later batches update only some vertices
+(0x0A lists) and reuse the rest. Triangles reference UV/colour indices independently of the
+vertex index (OBJ-style), so exporters must de-duplicate `{position, normal, uv, colour}`.
+
+### Texture section (section 1)
+
+`{u32 materials, u32 uploads, 0, 0}`, `materials × 0x50` GIF packets (GIFtag NLOOP 4 A+D:
+CLAMP_1, MIPTBP1_1, TEX1_1, TEX0_1 with relative TBP/CBP), `materials × 20` records
+`{u16 image[4] (0xFFFF = no level), u16 clut, u8 levels, u8 hasCLUT, u32 0, u16 w, u16 h}`
+(record *i* belongs to material *i*), then `uploads × 16` PSMCT32 uploads
+`{0, u32 offset (relative to the record), u16 w32, u16 h32, u16 qwc, u16 runtime TBP}`.
+Accessors `FUN_00342f40` (count), `FUN_00342f50` (packet), `FUN_00342f68` (record),
+`FUN_00342f98` (upload); `FUN_001d06e0` uploads and patches TBP0 (bits 0–13), CBP (37–50) and
+MIPTBP1. Every model material is PSMT8 with a CSM1 16×16 CLUT (same swizzle as the UI textures).
+
+### Which entry is which (UK disc, rest pose renders)
+
+`0119/00` Naruto (`0120/00` same mesh, smaller motion section), `0121` Kakashi, `0122` Shikamaru,
+`0123` Sakura, `0124` Neji, `0125` Rock Lee, `0126` Kankuro, `0128` Temari, `0130` Tsunade,
+`0133` Itachi, `0134` Kisame, `0136` Might Guy, `0137` Kiba, `0138` Gaara, `0141`/`0142`/`0144`
+Sound ninja (unconfirmed), `0143` untextured variant (16×16 placeholder textures);
+`0007…0009/05` and `0158…0160` puppet-like enemies (likely Kankuro's puppets); `0147…0164`, `0193…0219` enemies/NPCs
+(`0219` Konohamaru); `0174…0191` the 23-section versions of the cast (`0191` Sasuke);
+`0169`/`0192` the golden mechanical boss; `0185` cloaked boss; `0194` weapon prop.
+
+### Open
+
+- Motions (section 2, `FUN_001e1300`: per-bone tracks of key times + translation/scale floats
+  and quaternions as `s16 / 32767`, slerp via `FUN_003425e8`) — not decoded yet.
+- Exact VU1 semantics (lighting, fog, clipping, MSCAL 0x26, header word 11/15) need the
+  microcode disassembled; the environment pass UVs are approximated as a sphere map.
+- Remaining sections (3–19, 21, 22) and the `{0,0,0,1}` coord vector.
