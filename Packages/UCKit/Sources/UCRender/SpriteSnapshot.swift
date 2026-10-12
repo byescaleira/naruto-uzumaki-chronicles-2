@@ -72,10 +72,28 @@ public enum SpriteSnapshot {
             #endif
         }
 
-        var halves = [Float16](repeating: 0, count: width * height * 4)
+        // Raw binary16 bits: `Float16` doesn't exist on x86_64 macOS (universal Mac builds).
+        var halves = [UInt16](repeating: 0, count: width * height * 4)
         halves.withUnsafeMutableBytes { raw in
             scene.getBytes(raw.baseAddress!, bytesPerRow: width * 8, from: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0)
         }
-        return halves.map(Float.init)
+        return halves.map(Self.float(fromHalf:))
+    }
+
+    /// IEEE 754 binary16 → binary32.
+    static func float(fromHalf bits: UInt16) -> Float {
+        let sign = UInt32(bits & 0x8000) << 16
+        let exponent = Int((bits >> 10) & 0x1F)
+        let mantissa = UInt32(bits & 0x3FF)
+        switch exponent {
+        case 0:
+            // Zero or subnormal: mantissa · 2^-24.
+            let value = Float(mantissa) * 0x1p-24
+            return sign == 0 ? value : -value
+        case 0x1F:
+            return Float(bitPattern: sign | 0x7F80_0000 | mantissa << 13)
+        default:
+            return Float(bitPattern: sign | UInt32(exponent + 112) << 23 | mantissa << 13)
+        }
     }
 }

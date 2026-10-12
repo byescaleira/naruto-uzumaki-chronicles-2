@@ -7,12 +7,12 @@ struct NarutoUC2App: App {
     @NSApplicationDelegateAdaptor(MacAppDelegate.self) private var appDelegate
     #endif
 
-    @State private var runtime = GameRuntime()
+    @State private var session = GameSession(runtime: GameRuntime())
     @State private var library = GameLibrary()
 
     var body: some Scene {
         WindowGroup {
-            RootView(runtime: runtime, library: library)
+            RootView(session: session, library: library)
                 .ignoresSafeArea()
                 #if os(iOS)
                 .statusBarHidden()

@@ -45,8 +45,30 @@ func fail(_ message: String) -> Never {
 /// What the app embeds from the disc (English text and voices). Bump `format` whenever the
 /// selection or a conversion step changes, so CI fetches a matching package.
 enum GamePack {
-    static let format = 1
-    static let files = ["SYSTEM.CNF", "CFC_UK.DIG", "XA/XA.AFS", "XA/XAVOICE.AFS", "MV/MV00.DSI"]
+    /// 2: the intro movie ships converted (HEVC Main10 + AAC, `MV/MV00.mp4`) instead of `MV/MV00.DSI`.
+    static let format = 2
+    static let files = ["SYSTEM.CNF", "CFC_UK.DIG", "XA/XA.AFS", "XA/XAVOICE.AFS"]
+    static let movie = "MV/MV00.DSI"
+
+    /// Copies `file` to `target` and returns its SHA-256 (hex).
+    static func copy(_ file: DiscImage.File, to target: URL) throws -> String {
+        try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+        FileManager.default.createFile(atPath: target.path, contents: nil)
+        let writer = try FileHandle(forWritingTo: target)
+        let reader = try FileHandle(forReadingFrom: file.url)
+        defer { try? writer.close(); try? reader.close() }
+        try reader.seek(toOffset: file.offset)
+        var hash = SHA256()
+        var remaining = file.size
+        while remaining > 0 {
+            let chunk = try reader.read(upToCount: Int(min(remaining, 8 << 20))) ?? Data()
+            guard !chunk.isEmpty else { fail("short read in \(target.lastPathComponent)") }
+            hash.update(data: chunk)
+            try writer.write(contentsOf: chunk)
+            remaining -= UInt64(chunk.count)
+        }
+        return hash.finalize().map { String(format: "%02x", $0) }.joined()
+    }
 }
 
 let arguments = Array(CommandLine.arguments.dropFirst())
@@ -537,26 +559,21 @@ case ("pack", _):
     var manifest: [[String: Any]] = []
     for path in GamePack.files {
         let file = try disc.file(path)
-        let target = out.appending(path: path)
-        try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
-        FileManager.default.createFile(atPath: target.path, contents: nil)
-        let writer = try FileHandle(forWritingTo: target)
-        let reader = try FileHandle(forReadingFrom: file.url)
-        try reader.seek(toOffset: file.offset)
-        var hash = SHA256()
-        var remaining = file.size
-        while remaining > 0 {
-            let chunk = try reader.read(upToCount: Int(min(remaining, 8 << 20))) ?? Data()
-            guard !chunk.isEmpty else { fail("short read in \(path)") }
-            hash.update(data: chunk)
-            try writer.write(contentsOf: chunk)
-            remaining -= UInt64(chunk.count)
-        }
-        try writer.close(); try reader.close()
-        let digest = hash.finalize().map { String(format: "%02x", $0) }.joined()
+        let digest = try GamePack.copy(file, to: out.appending(path: path))
         manifest.append(["path": path, "size": file.size, "sha256": digest])
         print("\(path)\t\(file.size)\t\(digest)")
     }
+    // The intro movie: converted once here (ffmpeg, package time only) to HEVC + AAC.
+    let staging = FileManager.default.temporaryDirectory.appending(path: "nuc2-pack-\(UUID().uuidString)", directoryHint: .isDirectory)
+    defer { try? FileManager.default.removeItem(at: staging) }
+    let dsi = staging.appending(path: "MV00.DSI")
+    _ = try GamePack.copy(try disc.file(GamePack.movie), to: dsi)
+    try movieConvert(dsi.path, to: out.appending(path: "MV", directoryHint: .isDirectory), MovieConversion(arguments: []))
+    let mp4 = out.appending(path: "MV/MV00.mp4")
+    let size = (try FileManager.default.attributesOfItem(atPath: mp4.path)[.size] as? NSNumber)?.uint64Value ?? 0
+    let digest = SHA256.hash(data: try Data(contentsOf: mp4, options: .mappedIfSafe)).map { String(format: "%02x", $0) }.joined()
+    manifest.append(["path": "MV/MV00.mp4", "size": size, "sha256": digest])
+    print("MV/MV00.mp4\t\(size)\t\(digest)")
     let json = try JSONSerialization.data(withJSONObject: ["format": GamePack.format, "source": DiscImage.expectedExecutable, "files": manifest],
                                           options: [.prettyPrinted, .sortedKeys])
     try json.write(to: out.appending(path: "manifest.json"))

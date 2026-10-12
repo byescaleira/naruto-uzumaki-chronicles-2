@@ -1,42 +1,12 @@
 {
   "sourceLanguage": "en",
   "strings": {
-    "Character portraits decoded from the game data": {
-      "localizations": {
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Retratos dos personagens decodificados dos dados do jogo"
-          }
-        }
-      }
-    },
-    "Game data loaded": {
-      "localizations": {
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Dados do jogo carregados"
-          }
-        }
-      }
-    },
     "Loading…": {
       "localizations": {
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
             "value": "Carregando…"
-          }
-        }
-      }
-    },
-    "SLES-55090 · CFC_%@.DIG · %lld entries": {
-      "localizations": {
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "SLES-55090 · CFC_%1$@.DIG · %2$lld entradas"
           }
         }
       }
@@ -57,16 +27,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Os dados embutidos não são do Naruto: Uzumaki Chronicles 2 (PAL, SLES-55090)."
-          }
-        }
-      }
-    },
-    "These portraits were decoded on this device from the game data embedded in the app. The game itself is still being rebuilt from the original code, so there's nothing to play yet.": {
-      "localizations": {
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Estes retratos foram decodificados neste aparelho a partir dos dados do jogo embutidos no app. O jogo em si ainda está sendo reconstruído a partir do código original, então ainda não há o que jogar."
           }
         }
       }

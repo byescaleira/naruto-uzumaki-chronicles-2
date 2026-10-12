@@ -1,4 +1,5 @@
 import GameController
+import simd
 
 /// One tick's worth of controller state, in PS2 DualShock 2 terms.
 public struct InputState: Sendable, Equatable {
@@ -25,11 +26,28 @@ public struct InputState: Sendable, Equatable {
     public init() {}
 }
 
-/// Reads the current controller (extended gamepad, Siri Remote, or keyboard).
+/// Reads the current controller (extended gamepad, Siri Remote, or keyboard), plus short
+/// "virtual" presses from touch and clicks.
 @MainActor
 final class InputSource {
+    /// A press injected by touch: held for a few ticks so edge-triggered menus see it.
+    private var virtual = InputState()
+    private var virtualTicks = 0
+    static let virtualPressTicks = 4
+
+    func press(_ buttons: InputState.Buttons, stick: SIMD2<Float>) {
+        virtual.buttons = buttons
+        virtual.leftStick = stick
+        virtualTicks = Self.virtualPressTicks
+    }
+
     func sample() -> InputState {
         var state = InputState()
+        defer { virtualTicks = max(0, virtualTicks - 1) }
+        if virtualTicks > 0 {
+            state.buttons.formUnion(virtual.buttons)
+            state.leftStick = virtual.leftStick
+        }
         if let pad = GCController.current?.extendedGamepad {
             let map: [(GCControllerButtonInput, InputState.Buttons)] = [
                 (pad.buttonA, .cross), (pad.buttonB, .circle), (pad.buttonX, .square), (pad.buttonY, .triangle),
@@ -38,12 +56,17 @@ final class InputSource {
             ]
             for (button, flag) in map where button.isPressed { state.buttons.insert(flag) }
             if pad.buttonOptions?.isPressed == true { state.buttons.insert(.select) }
-            state.leftStick = SIMD2(pad.leftThumbstick.xAxis.value, pad.leftThumbstick.yAxis.value)
+            let stick = SIMD2(pad.leftThumbstick.xAxis.value, pad.leftThumbstick.yAxis.value)
+            let dpad = SIMD2(pad.dpad.xAxis.value, pad.dpad.yAxis.value)
+            // The D-pad drives the same direction as the stick (menus read `leftStick`).
+            let direction = simd_length(stick) >= simd_length(dpad) ? stick : dpad
+            if direction != .zero { state.leftStick = direction }
             state.rightStick = SIMD2(pad.rightThumbstick.xAxis.value, pad.rightThumbstick.yAxis.value)
         } else if let remote = GCController.current?.microGamepad {
             if remote.buttonA.isPressed { state.buttons.insert(.cross) }
             if remote.buttonX.isPressed { state.buttons.insert(.circle) }
-            state.leftStick = SIMD2(remote.dpad.xAxis.value, remote.dpad.yAxis.value)
+            let dpad = SIMD2(remote.dpad.xAxis.value, remote.dpad.yAxis.value)
+            if dpad != .zero { state.leftStick = dpad }
         }
         if let keyboard = GCKeyboard.coalesced?.keyboardInput {
             let keys: [(GCKeyCode, InputState.Buttons)] = [
@@ -57,8 +80,11 @@ final class InputSource {
                 (keyboard.button(forKeyCode: positive)?.isPressed == true ? 1 : 0)
                     - (keyboard.button(forKeyCode: negative)?.isPressed == true ? 1 : 0)
             }
-            let keyStick = SIMD2(axis(.keyA, .keyD), axis(.keyS, .keyW))
+            let letters = SIMD2(axis(.keyA, .keyD), axis(.keyS, .keyW))
+            let arrows = SIMD2(axis(.leftArrow, .rightArrow), axis(.downArrow, .upArrow))
+            let keyStick = letters != .zero ? letters : arrows
             if keyStick != .zero { state.leftStick = keyStick }
+            if keyboard.button(forKeyCode: .spacebar)?.isPressed == true { state.buttons.insert(.cross) }
         }
         return state
     }

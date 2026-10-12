@@ -8,6 +8,12 @@ public struct DiscImage: Sendable {
         public let url: URL
         public let offset: UInt64
         public let size: UInt64
+
+        public init(url: URL, offset: UInt64, size: UInt64) {
+            self.url = url
+            self.offset = offset
+            self.size = size
+        }
     }
 
     public enum Failure: Error, Equatable {

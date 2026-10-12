@@ -67,6 +67,8 @@ targets:
         product: UCRender
       - package: UCKit
         product: UCFormats
+      - package: UCKit
+        product: UCAudio
     info:
       path: App/Info.plist
       properties:

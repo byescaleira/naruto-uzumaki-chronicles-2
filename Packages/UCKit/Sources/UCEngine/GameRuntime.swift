@@ -36,6 +36,11 @@ public final class GameRuntime {
         }
     }
 
+    /// A short press from touch or a click (held for a few ticks, then released).
+    public func press(_ buttons: InputState.Buttons = [], stick: SIMD2<Float> = .zero) {
+        inputSource.press(buttons, stick: stick)
+    }
+
     private func step() {
         tick += 1
         title?.tick(input)

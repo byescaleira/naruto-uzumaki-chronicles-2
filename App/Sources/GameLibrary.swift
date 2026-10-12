@@ -16,6 +16,10 @@ final class GameLibrary {
 
     private(set) var state: State = .loading
 
+    var isReady: Bool {
+        if case .ready = state { true } else { false }
+    }
+
     func load() async {
         guard let url = Self.dataURL else {
             state = .failed(String(localized: "This build doesn't include the game data."))

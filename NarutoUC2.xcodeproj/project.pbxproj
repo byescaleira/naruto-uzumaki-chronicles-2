@@ -12,6 +12,7 @@
 		239B1E2E59E00ED705DEFA1D /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 6FE58A370F9B5E04CA96322D /* Localizable.xcstrings */; };
 		28924FA92D0A701A0EAF2F96 /* MacAppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6B4F77C549003FAAE3C88CB /* MacAppDelegate.swift */; };
 		2D86A09A21E773E5B1A6CF2D /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E96BDD408380AA78442475AF /* RootView.swift */; };
+		2FE4822C063063C817FBBE49 /* GameSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AAA54BEBD7DABD1FD960B26 /* GameSession.swift */; };
 		330C7B20544C1E5AB0C1CAA6 /* GameData in Resources */ = {isa = PBXBuildFile; fileRef = 39C89FFFE1D96CC782C25BDB /* GameData */; };
 		58E03602A69B5C3434AF1459 /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = CFE0B13E13193563C0A3EDB0 /* AppIcon.icon */; platformFilters = (ios, macos, ); };
 		62D7C4764BA3F2886BE5229D /* GameLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71726A761D6E84DAEB626D72 /* GameLibrary.swift */; };
@@ -19,13 +20,17 @@
 		7A684BBD63B441B4DD90CFB4 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = E3D40932FBF68BB18B02A0C0 /* Assets.xcassets */; platformFilters = (tvos, ); };
 		8294D35625D6F06865248C2D /* GameScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9F8E7678C8F8C27B26679CA /* GameScreen.swift */; };
 		A7D86CA8BD46368FD3EE9BD2 /* UCRender in Frameworks */ = {isa = PBXBuildFile; productRef = 61ABCF3B002590C63638C640 /* UCRender */; };
+		DA9D6520A788A286431CDAC3 /* Sprite.metal in Sources */ = {isa = PBXBuildFile; fileRef = 5ACAFB732EC126AF42ADED7B /* Sprite.metal */; };
 		E69DE7126C3C4AF42771DEEE /* Frame.metal in Sources */ = {isa = PBXBuildFile; fileRef = 8339E4132DBB453FDB460989 /* Frame.metal */; };
+		EC5FBC8AF2BF3F0FCFB1198A /* UCAudio in Frameworks */ = {isa = PBXBuildFile; productRef = 651F1376D665C7BAB3CFA473 /* UCAudio */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		03BBC75B7F98E5A1AC1FAD29 /* UCKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = UCKit; path = Packages/UCKit; sourceTree = SOURCE_ROOT; };
+		0AAA54BEBD7DABD1FD960B26 /* GameSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameSession.swift; sourceTree = "<group>"; };
 		1BE676082153870D891E743F /* NarutoUC2App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NarutoUC2App.swift; sourceTree = "<group>"; };
 		39C89FFFE1D96CC782C25BDB /* GameData */ = {isa = PBXFileReference; lastKnownFileType = folder; path = GameData; sourceTree = SOURCE_ROOT; };
+		5ACAFB732EC126AF42ADED7B /* Sprite.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = Sprite.metal; sourceTree = "<group>"; };
 		6FE58A370F9B5E04CA96322D /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		71726A761D6E84DAEB626D72 /* GameLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameLibrary.swift; sourceTree = "<group>"; };
 		8339E4132DBB453FDB460989 /* Frame.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = Frame.metal; sourceTree = "<group>"; };
@@ -45,6 +50,7 @@
 				085A4EA9334CDE45B2027B00 /* UCEngine in Frameworks */,
 				A7D86CA8BD46368FD3EE9BD2 /* UCRender in Frameworks */,
 				173EA88543DC63E995AD129D /* UCFormats in Frameworks */,
+				EC5FBC8AF2BF3F0FCFB1198A /* UCAudio in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -74,6 +80,7 @@
 			children = (
 				71726A761D6E84DAEB626D72 /* GameLibrary.swift */,
 				C9F8E7678C8F8C27B26679CA /* GameScreen.swift */,
+				0AAA54BEBD7DABD1FD960B26 /* GameSession.swift */,
 				B6B4F77C549003FAAE3C88CB /* MacAppDelegate.swift */,
 				1BE676082153870D891E743F /* NarutoUC2App.swift */,
 				E96BDD408380AA78442475AF /* RootView.swift */,
@@ -85,6 +92,7 @@
 			isa = PBXGroup;
 			children = (
 				8339E4132DBB453FDB460989 /* Frame.metal */,
+				5ACAFB732EC126AF42ADED7B /* Sprite.metal */,
 			);
 			path = Shaders;
 			sourceTree = "<group>";
@@ -146,6 +154,7 @@
 				320BE2057B97C0C3840D7808 /* UCEngine */,
 				61ABCF3B002590C63638C640 /* UCRender */,
 				89102883FE9DEBC74C17EB30 /* UCFormats */,
+				651F1376D665C7BAB3CFA473 /* UCAudio */,
 			);
 			productName = NarutoUC2;
 			productReference = F15F39F7FBD40DD43B3E522B /* NarutoUC2.app */;
@@ -235,9 +244,11 @@
 				E69DE7126C3C4AF42771DEEE /* Frame.metal in Sources */,
 				62D7C4764BA3F2886BE5229D /* GameLibrary.swift in Sources */,
 				8294D35625D6F06865248C2D /* GameScreen.swift in Sources */,
+				2FE4822C063063C817FBBE49 /* GameSession.swift in Sources */,
 				28924FA92D0A701A0EAF2F96 /* MacAppDelegate.swift in Sources */,
 				70B0A96628A8EB612CAC8601 /* NarutoUC2App.swift in Sources */,
 				2D86A09A21E773E5B1A6CF2D /* RootView.swift in Sources */,
+				DA9D6520A788A286431CDAC3 /* Sprite.metal in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -479,6 +490,10 @@
 		61ABCF3B002590C63638C640 /* UCRender */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = UCRender;
+		};
+		651F1376D665C7BAB3CFA473 /* UCAudio */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = UCAudio;
 		};
 		89102883FE9DEBC74C17EB30 /* UCFormats */ = {
 			isa = XCSwiftPackageProductDependency;

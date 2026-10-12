@@ -37,6 +37,7 @@ public final class GameSurfaceView: PlatformView {
         layer.addSublayer(metalLayer)
         #endif
         makeRenderer()
+        installPointerControls()
         #if os(tvOS)
         // The TV (or its HDR setting) can change while the app runs.
         NotificationCenter.default.addObserver(
@@ -45,6 +46,32 @@ public final class GameSurfaceView: PlatformView {
         )
         #endif
     }
+
+    /// Touch (iPhone/iPad) and clicks (Mac) for screens without a controller: a tap is
+    /// Cross/Start, a vertical swipe moves the menu selection. tvOS uses the Siri Remote
+    /// through GameController instead.
+    private func installPointerControls() {
+        #if os(iOS)
+        addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(tapped)))
+        for direction in [UISwipeGestureRecognizer.Direction.up, .down] {
+            let swipe = UISwipeGestureRecognizer(target: self, action: #selector(swiped(_:)))
+            swipe.direction = direction
+            addGestureRecognizer(swipe)
+        }
+        #elseif os(macOS)
+        addGestureRecognizer(NSClickGestureRecognizer(target: self, action: #selector(tapped)))
+        #endif
+    }
+
+    #if os(iOS) || os(macOS)
+    @objc private func tapped() { runtime.press([.cross, .start]) }
+    #endif
+
+    #if os(iOS)
+    @objc private func swiped(_ gesture: UISwipeGestureRecognizer) {
+        runtime.press(stick: SIMD2(0, gesture.direction == .up ? 1 : -1))
+    }
+    #endif
 
     private func makeRenderer() {
         outputMode = HDRLayer.outputMode

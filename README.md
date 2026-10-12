@@ -33,13 +33,20 @@ Projeto em andamento. O que já existe e foi verificado:
 | **Arquivo `CFC*.DIG`** | Índice, compressor próprio e tabela de sub-arquivos decifrados. As **688 entradas dos 10 idiomas** expandem sem nenhuma falha (≈2 s por arquivo, 397 MiB cada). |
 | **Texturas** | Formato das texturas de UI/sprites decifrado, com emulação do *swizzle* da memória do GS: **3651 texturas** extraídas do disco inglês. |
 | **Áudio** | Decodificador CRI **ADX** em Swift puro, com as regras do próprio jogo (coeficientes, escala, histórico inicial e loop lidos como em `ADXB_DecodeHeaderAdx`). As **131 músicas** e as **2002 vozes** (inglês e japonês) decodificam inteiras, ≈ 170 milhões de amostras/s. Reprodução em streaming com `AVAudioEngine`: barramentos de música e voz, loops sem emenda, fades, sem alocação nem trava na thread de áudio. |
-| **App** | Compila para iOS, iPadOS, macOS e tvOS. Superfície Metal paisagem, de ponta a ponta, a 60 Hz com saída HDR. Os dados do jogo vêm **embutidos no app** (ver abaixo), em todas as plataformas: o app abre direto, sem pedir arquivo, e mostra os retratos decodificados no aparelho. |
-| **Ainda não** | Modelos 3D, animações, fases, scripts, lógica de jogo, vídeo `MV00.DSI`. |
+| **Modelos 3D** | Formato dos modelos com esqueleto decifrado (VIF + programas de microcódigo VU1, ossos, partes e materiais): os **78 modelos** do disco, Naruto inclusive, decodificam texturizados na pose de repouso. |
+| **Vídeo** | `MV00.DSI` é MPEG-2 512×448 a 25 fps com áudio SPU ADPCM estéreo a 48 kHz, em blocos de 0x40000 bytes. A abertura (109 s) entra no pacote já em **HEVC Main10 + AAC** (25 MB, sincronia de 0 amostras) e toca com `AVPlayer`. |
+| **2D / menus** | Animações, objetos e camadas 2D reimplementados a partir dos dados do próprio jogo, com renderizador de sprites em Metal 4 e Metal clássico. **A tela de título e o menu principal** rodam exatamente como o jogo compõe, com as animações. |
+| **App** | iOS, iPadOS, macOS e tvOS, com os dados **embutidos**. Abre na **abertura**, que pode ser pulada. Depois vem a **tela de título**, com a música e o locutor que o próprio jogo usa (`FUN_001aaed0`: bg093 com fade-in e uma fala aleatória). PRESS START e BEGIN!/CONTINUE!/OPTIONS funcionam com controle, teclado, toque (tocar e deslizar) e Siri Remote. |
+| **Ainda não** | Animações dos modelos, fases, o que cada item do menu inicia, lógica de jogo e efeitos sonoros. |
 
-<p align="center"><img src="docs/images/iphone.png" alt="O app no iPhone 17 Pro: paisagem, sem bordas, inclusive sob a Dynamic Island" width="90%"></p>
+<p align="center"><img src="docs/images/title.png" alt="A tela de título do jogo rodando no app no iPhone 17 Pro" width="100%"></p>
 
-<p align="center"><sub>O app no simulador do iPhone 17 Pro: paisagem, preenchendo inclusive a área da Dynamic Island. O sol
-passa do branco SDR para testar a saída HDR.</sub></p>
+<p align="center"><sub>O menu principal rodando no app, no simulador do iPhone 17 Pro. Tudo vem dos dados do jogo: o fundo
+animado, o elenco, o logo, os itens com a seleção animada. Preenche a tela inteira, inclusive a área da Dynamic Island.</sub></p>
+
+| Abertura (HEVC, tela cheia) | Naruto em 3D (modelo decodificado) |
+| :---: | :---: |
+| ![A abertura do jogo tocando no app](docs/images/intro.png) | ![O modelo 3D do Naruto renderizado de quatro ângulos](docs/images/model-naruto.png) |
 
 ## 🔍 Engenharia reversa com REA
 
@@ -117,6 +124,40 @@ bits 3 e 4 do índice), e o alfa vai até 0x80.
 <p align="center"><sub>Algumas das 3651 texturas decodificadas: rostos da seleção de personagens, arte dos personagens, os
 nomes da tela de versus, os padrões karakusa e sayagata dos menus e os selos de mão.</sub></p>
 
+## 🧩 Modelos, 2D, áudio e vídeo
+
+Cada parte foi decifrada com o REA direto no executável. Os endereços e formatos estão em [`re/NOTES.md`](re/NOTES.md).
+
+<p align="center"><img src="docs/images/models.png" alt="Os 78 modelos 3D do disco renderizados" width="70%"></p>
+
+<p align="center"><sub>Os 78 modelos do disco, decodificados e renderizados pelo <code>uc-tool</code>: elenco, inimigos, chefes e objetos.</sub></p>
+
+- **Modelos 3D:**
+  - **Formato:** arquivos com tabela de seções (`FUN_001bf610`). A seção 0 traz ossos de 0x40 bytes, com quatérnio conjugado, escala e translação.
+  - **Geometria:** partes com listas de comandos que injetam matrizes antes de cada fatia de dados VIF. Os programas VU1 mantêm tabelas indexadas de vértices, normais, cores e UVs, com as posições já pesadas pelo osso.
+  - **Conferência:** cada vértice com mais de um osso aparece uma vez por osso, e na pose de repouso todas as cópias caem no mesmo ponto (diferença máxima de 0,07 nos 78 modelos).
+- **2D:**
+  - **Formato:** arquivos de sprites com animações, quadros e peças.
+  - **Desenho:** TRIFAN com coordenadas `canto·16 + 0x8000` (`FUN_00260a40`).
+  - **Tela de título:** o módulo é `FUN_001a8c30`, com 21 camadas de fundo, e `FUN_001a9b90` cria os 3 itens. Ela usa texturas de 4 bits (PSMT4), que agora decodificam.
+- **Áudio:**
+  - **Formato:** tudo é CRI ADX v4, 48 kHz.
+  - **Decodificação:** as fórmulas são as do próprio jogo (`FUN_0031a240`, `FUN_0031b430`), que diferem do ffmpeg em até 3761 LSB.
+  - **Volumes:** a tabela de volumes de cada stream é a entrada 567 do DIG.
+- **Vídeo:** um player `sceMpeg` na IPU (`FUN_001d8fe0`), com blocos de streams lidos por `FUN_001bfa20`.
+
+```bash
+swift run --package-path Packages/UCKit -c release uc-tool model export GameData/CFC_UK.DIG 119 0 naruto
+```
+
+```bash
+swift run --package-path Packages/UCKit -c release uc-tool screen render GameData/CFC_UK.DIG menu menu.png 1920x1080
+```
+
+```bash
+swift run --package-path Packages/UCKit -c release uc-tool movie info <seu-disco>.iso
+```
+
 ## 🎨 Ícone
 
 <p align="center"><img src="docs/images/icon-variants.png" alt="Ícone nas variantes padrão, escura, clara e tingida" width="80%"></p>
@@ -138,13 +179,14 @@ Scale2x para manter os contornos. O fundo é o padrão karakusa verde dos menus 
 | **4K a 60 Hz** | Drawable na resolução nativa do painel (3840×2160 no Apple TV 4K) e `CAMetalDisplayLink` pedindo 60 Hz. |
 | **Ritmo pelo tempo medido** | O jogo avança pelo tempo real, nunca pela taxa anunciada da tela ([`FramePacer`](Packages/UCKit/Sources/UCEngine/FramePacer.swift)). Perto de 60 ou 120 Hz trava no vsync (exatamente 1 tick por quadro, sem tremido de 0/2 ticks) e conta vsyncs perdidos. Em 50, 30 Hz ou taxa variável segue o relógio. Depois de uma parada (troca de modo da TV, troca de app) descarta o atraso em vez de acelerar. Os casos têm testes: ProMotion caindo para 60 Hz, vsync perdido, 50/30 Hz, parada longa. Em Debug, o log `com.byescaleira.nuc2/pacing` mostra fps real, ticks/s, CPU e GPU por quadro. |
 | **Cor** | A cena é linear BT.709. A saída converte a gama com matrizes conferidas (as linhas somam 1, então o branco continua branco). Só os realces passam do branco SDR, e eles são comprimidos por uma curva suave, sem corte seco. A margem é a EDR **atual** da tela, lida a cada quadro. No Apple TV com TV SDR o app gera sRGB, em vez de mandar PQ para o sistema converter. Em Debug, `NUC2_OUTPUT=edr\|pq\|sdr` força cada caminho. |
-| **Só paisagem, sem bordas** | Orientações só de paisagem, `UIRequiresFullScreen`, sem status bar nem home indicator, gestos de borda adiados e a superfície ignorando a safe area. No Mac a janela entra e permanece em tela cheia. |
-| **Controles** | `GameController`: controles estendidos, Siri Remote e teclado, mapeados para os botões do DualShock 2. |
+| **Só paisagem, sem bordas** | Só paisagem, sem status bar nem home indicator, gestos de borda adiados e a superfície ignorando a safe area. No iPad (iPadOS 26) a orientação é travada em tempo de execução e a cena fica do tamanho da tela (`UISceneSizeRestrictions`), sem o `UIRequiresFullScreen` obsoleto. No Mac a janela entra e permanece em tela cheia. A abertura preenche a tela cortando em cima e embaixo, sem barras. |
+| **Controles** | `GameController`: controles estendidos (direcional e analógico), Siri Remote e teclado (WASD/setas, Enter, espaço), mapeados para os botões do DualShock 2. No iPhone e iPad, tocar = ✕/Start e deslizar para cima/baixo = direcional. |
 
 ## 🧰 Tecnologias
 
 - **Swift 6** com concorrência estrita, **SwiftUI**, **Swift Testing**
 - **Metal 4** e Metal clássico, `CAMetalDisplayLink`, EDR, `AVDisplayManager`
+- **AVAudioEngine** (`AVAudioSourceNode`, sem alocação na thread de áudio) e **AVFoundation** (HEVC Main10, AAC)
 - **GameController**, **Icon Composer**, brand assets em camadas do tvOS
 - **XcodeGen**
 - **REA** + **Ghidra** + ghidra-emotionengine-reloaded para a engenharia reversa
@@ -152,12 +194,13 @@ Scale2x para manter os contornos. O fundo é o padrão karakusa verde dos menus 
 ## 🗺️ Arquitetura
 
 ```
-App/                 app multiplataforma (um único target), ícone e brand assets do tvOS
+App/                 app multiplataforma (um único target): fluxo abertura → título, shaders, ícones
 Packages/UCKit/
-  UCFormats/         CFC.DIG (índice, descompressor, sub-arquivos), AFS, ADX, tabela de streams
+  UCFormats/         CFC.DIG, ISO 9660, texturas do GS (PSMT8/PSMT4), sprites 2D, modelos (VIF/VU1),
+                     AFS, ADX, tabela de streams, DSI (MPEG-2 + SPU ADPCM)
   UCAudio/           reprodução ADX em streaming (AVAudioEngine): música e voz, loops, fades
-  UCRender/          renderizador Metal 4 / Metal, saída HDR, shaders
-  UCEngine/          loop de 60 Hz, entrada, superfície de jogo
+  UCRender/          renderizador Metal 4 / Metal, passe de sprites, saída HDR
+  UCEngine/          loop de 60 Hz, entrada, superfície, animação 2D, tela de título, abertura
   UCTool/            uc-tool: listar, verificar e extrair os arquivos do disco
 re/                  engenharia reversa: REA (patch, daemon, consultas), notas e scripts
 docs/images/         imagens deste README, geradas pelo projeto
@@ -179,8 +222,9 @@ open NarutoUC2.xcodeproj
 
 ### 📀 Dados do jogo embutidos
 
-O app embute uma parte do disco: `SYSTEM.CNF`, `CFC_UK.DIG`, `XA/` com as vozes em inglês e a música, e `MV/`.
-São cerca de 1,1 GB numa pasta `GameData/`. **Esses dados nunca entram neste repositório.**
+O app embute uma parte do disco: `SYSTEM.CNF`, `CFC_UK.DIG`, `XA/` com as vozes em inglês e a música, e a
+abertura já convertida para HEVC + AAC (`MV/MV00.mp4`, formato 2 do pacote). São cerca de 1,08 GB numa pasta
+`GameData/`. **Esses dados nunca entram neste repositório.**
 
 - [`scripts/make_game_data.sh`](scripts/make_game_data.sh) gera `GameData/` a partir da sua ISO (`uc-tool pack`) e
   um pacote reprodutível, com o mesmo SHA-256 para o mesmo disco.
@@ -246,10 +290,10 @@ swift test --package-path Packages/UCKit
 
 ## 🛣️ Próximos passos
 
-1. Identificar os formatos de modelos (pacotes VIF/GIF), animações e scripts dentro das entradas do DIG.
-2. Desenhar os primeiros gráficos reais do jogo no Metal (menus e HUD a partir das texturas já decodificadas).
-3. Decodificar o áudio ADX e o vídeo `MV00.DSI`.
-4. Reimplementar a lógica do jogo a partir do executável, sempre com evidências do REA.
+1. Animações dos modelos: decodificar a seção de *motion* ("Mt", `FUN_001e1300`) e fazer o skinning na GPU.
+2. Renderizador 3D em Metal 4 para os modelos, e depois os cenários.
+3. O que cada item do menu inicia (BEGIN! → modo história), seleção de personagem e o fluxo do jogo.
+4. Efeitos sonoros (módulos de síntese do IOP) e o restante da lógica de jogo, sempre com evidências do REA.
 
 ## 🍜 Créditos e aviso
 
