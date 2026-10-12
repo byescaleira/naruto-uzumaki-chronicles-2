@@ -242,9 +242,11 @@ scripts/make_game_data.sh "<seu disco>.iso"
 scripts/fetch_game_data.sh
 ```
 
-**Xcode Cloud:** [`ci_scripts/ci_post_clone.sh`](ci_scripts/ci_post_clone.sh) baixa o pacote antes do build. No
-workflow, adicione a variável secreta `NUC2_DATA_TOKEN`: um token *fine-grained* do GitHub com acesso somente
-leitura a **Contents** do repositório de dados.
+**Xcode Cloud:** o pacote também fica no repositório privado como conteúdo git, em pedaços de 90 MB, ligado aqui
+como o submódulo `GameDataPackage`. O Xcode Cloud clona o submódulo com o próprio acesso dele aos repositórios, sem
+token, e [`ci_scripts/ci_post_clone.sh`](ci_scripts/ci_post_clone.sh) remonta e confere o pacote. Basta dar acesso
+ao repositório `naruto-uzumaki-chronicles-2-data` uma vez, quando o Xcode Cloud pedir. Quem clonar este repositório
+público sem acesso ao privado clona normalmente, só sem `--recursive`.
 
 Como o app leva conteúdo do jogo, ele é **só para os seus aparelhos** (build local ou TestFlight interno), não para
 App Store nem para testadores externos. Em builds Debug, `NUC2_DATA` aponta para outra fonte (o `.iso` ou uma pasta).

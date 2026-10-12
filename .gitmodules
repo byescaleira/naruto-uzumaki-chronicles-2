@@ -1,0 +1,3 @@
+[submodule "GameDataPackage"]
+	path = GameDataPackage
+	url = https://github.com/byescaleira/naruto-uzumaki-chronicles-2-data.git

@@ -17,3 +17,17 @@ else
         --title "Game data $NUC2_DATA_TAG" --notes "sha256 $NUC2_DATA_SHA256"
 fi
 echo "published $NUC2_DATA_ASSET to $NUC2_DATA_REPO@$NUC2_DATA_TAG"
+
+# The same package as git content in the GameDataPackage submodule (90 MB parts, under GitHub's
+# 100 MB file limit), so Xcode Cloud gets it with its own repository access.
+SUB="$ROOT/GameDataPackage"
+if [ -d "$SUB/.git" ] || [ -f "$SUB/.git" ]; then
+    rm -rf "$SUB/package"
+    mkdir -p "$SUB/package"
+    split -b 90m -a 2 "$ROOT/.build/$NUC2_DATA_ASSET" "$SUB/package/$NUC2_DATA_ASSET.part-"
+    printf 'NUC2_DATA_TAG=%s\nNUC2_DATA_ASSET=%s\nNUC2_DATA_SHA256=%s\n' "$NUC2_DATA_TAG" "$NUC2_DATA_ASSET" "$NUC2_DATA_SHA256" > "$SUB/package/PACKAGE"
+    git -C "$SUB" add -A package
+    git -C "$SUB" commit -q -m "Game data package $NUC2_DATA_TAG in 90 MB parts"
+    git -C "$SUB" -c credential.helper= -c 'credential.helper=!gh auth git-credential' push -q origin HEAD:main
+    echo "updated the GameDataPackage submodule; commit the new submodule pointer in this repository"
+fi
