@@ -20,6 +20,8 @@ import UniformTypeIdentifiers
 //   uc-tool adx play    <file.AFS> <index> [seconds=15] [volume=1]
 //   uc-tool disc info   <disc.iso | disc-folder>
 //   uc-tool tex extract <disc.iso | disc-folder> <out-dir> <entry> <subfile> [archive=CFC_UK.DIG]
+//   uc-tool movie info    <MV00.DSI | disc.iso | disc-folder>
+//   uc-tool movie convert <MV00.DSI | disc.iso | disc-folder> <out-dir> [--height 0 | 1080] [--crf 18] [--keep-streams]
 //   uc-tool pack        <disc.iso> <out-dir>   — the files the app embeds (GameData/)
 //   uc-tool model scan   <CFC.DIG> [sheet.png]
 //   uc-tool model info   <CFC.DIG> <entry> <subfile>
@@ -357,6 +359,14 @@ case ("tex", "extract"):
         try writePNG(texture, to: out.appending(path: String(format: "%04d_%02d_%03d.png", entryIndex, subfileIndex, n)))
     }
     print("decoded \(textures.count) textures")
+
+case ("movie", "info"):
+    try movieInfo(arguments[2])
+
+case ("movie", "convert"):
+    guard arguments.count >= 4 else { fail("usage: uc-tool movie convert <MV00.DSI | disc> <out-dir> [options]") }
+    try movieConvert(arguments[2], to: URL(fileURLWithPath: arguments[3], isDirectory: true),
+                     MovieConversion(arguments: arguments.dropFirst(4)))
 
 case ("pack", _):
     // `uc-tool pack <disc.iso> <out-dir>`: arguments[1] is the disc, arguments[2] the output.
