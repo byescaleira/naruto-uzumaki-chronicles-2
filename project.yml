@@ -7,6 +7,7 @@ options:
     macOS: "26.0"
     tvOS: "26.0"
   createIntermediateGroups: true
+  developmentLanguage: en
   # Marks the project as up to date with Xcode 27 (no "Update to recommended settings").
   xcodeVersion: "27.0"
 
@@ -37,6 +38,8 @@ targets:
       - path: App/Sources
       # Metal shaders for UCRender, compiled into the app's default.metallib.
       - path: App/Shaders
+      # UI strings: English source, Brazilian Portuguese translation.
+      - path: App/Resources
       # Icon Composer icon (iOS, iPadOS, macOS); layers built from game textures by re/scripts/MakeIcon.swift.
       - path: App/AppIcon.icon
         type: file
@@ -96,6 +99,7 @@ targets:
         ENABLE_HARDENED_RUNTIME: YES
         ENABLE_APP_SANDBOX: YES
         ENABLE_USER_SELECTED_FILES: readonly
+        "CODE_SIGN_ENTITLEMENTS[sdk=macosx*]": App/NarutoUC2-macOS.entitlements
         SUPPORTS_MACCATALYST: NO
         SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
         TARGETED_DEVICE_FAMILY: "1,2,3"

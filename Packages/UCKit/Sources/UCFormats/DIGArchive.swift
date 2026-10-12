@@ -32,17 +32,24 @@ public struct DIGArchive: Sendable {
         case entryOutOfBounds(Int)
     }
 
-    public let url: URL
+    /// Where the archive's bytes live: a loose file, or a range inside the `.iso`.
+    public let file: DiscImage.File
     public let entries: [Entry]
 
-    public init(url: URL) throws {
-        self.url = url
-        let handle = try FileHandle(forReadingFrom: url)
+    public init(file: DiscImage.File) throws {
+        self.file = file
+        let handle = try FileHandle(forReadingFrom: file.url)
         defer { try? handle.close() }
+        try handle.seek(toOffset: file.offset)
         guard let index = try handle.read(upToCount: Self.indexSize), index.count == Self.indexSize else {
             throw Failure.indexTruncated
         }
         entries = Self.parseIndex(index)
+    }
+
+    public init(url: URL) throws {
+        let size = (try FileManager.default.attributesOfItem(atPath: url.path)[.size] as? NSNumber)?.uint64Value ?? 0
+        try self.init(file: DiscImage.File(url: url, offset: 0, size: size))
     }
 
     public static func parseIndex(_ data: Data) -> [Entry] {
@@ -62,9 +69,9 @@ public struct DIGArchive: Sendable {
 
     /// Reads and, when needed, expands one entry.
     public func read(_ entry: Entry) throws -> [UInt8] {
-        let handle = try FileHandle(forReadingFrom: url)
+        let handle = try FileHandle(forReadingFrom: file.url)
         defer { try? handle.close() }
-        try handle.seek(toOffset: entry.offset)
+        try handle.seek(toOffset: file.offset + entry.offset)
         guard let stored = try handle.read(upToCount: Int(entry.storedSize)), stored.count == Int(entry.storedSize) else {
             throw Failure.entryOutOfBounds(entry.index)
         }

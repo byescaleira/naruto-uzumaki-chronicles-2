@@ -33,7 +33,7 @@ Projeto em andamento. O que já existe e foi verificado:
 | **Arquivo `CFC*.DIG`** | Índice, compressor próprio e tabela de sub-arquivos decifrados. As **688 entradas dos 10 idiomas** expandem sem nenhuma falha (≈2 s por arquivo, 397 MiB cada). |
 | **Texturas** | Formato das texturas de UI/sprites decifrado, com emulação do *swizzle* da memória do GS: **3651 texturas** extraídas do disco inglês. |
 | **Áudio** | Leitor dos contêineres CRI `AFS` (as faixas ADX ainda não são decodificadas). |
-| **App** | Compila para iOS, iPadOS, macOS e tvOS. Superfície Metal paisagem, de ponta a ponta, a 60 Hz com saída HDR. Por enquanto mostra uma cena de teste. |
+| **App** | Compila para iOS, iPadOS, macOS e tvOS. Superfície Metal paisagem, de ponta a ponta, a 60 Hz com saída HDR. Na primeira abertura pede o `.iso` do usuário (app Arquivos no iPhone/iPad, Finder no Mac), lê o disco direto da imagem ISO 9660 sem copiar, confere que é o SLES-55090 e mostra os retratos decodificados no aparelho. No Apple TV a importação ainda não existe. |
 | **Ainda não** | Modelos 3D, animações, fases, scripts, lógica de jogo, vídeo `MV00.DSI`. |
 
 <p align="center"><img src="docs/images/iphone.png" alt="O app no iPhone 17 Pro: paisagem, sem bordas, inclusive sob a Dynamic Island" width="90%"></p>
@@ -176,13 +176,14 @@ xcodegen generate
 open NarutoUC2.xcodeproj
 ```
 
-Para ler o jogo, monte a ISO do seu disco e aponte o app para ela com a variável `NUC2_DATA` no esquema do
-Xcode. No iPhone, iPad e Apple TV também dá para copiar os arquivos para a pasta `NUC2` em Documentos.
+Na primeira abertura, o app pede a imagem do seu disco (`.iso`). Ele guarda um bookmark com permissão de segurança
+e lê o arquivo onde ele está, sem copiar os 4 GB. Para desenvolvimento, `NUC2_DATA` no esquema do Xcode (o `.iso` ou
+uma pasta com os arquivos do disco) ou a pasta `NUC2` em Documentos também funcionam.
 
 Verificar todas as entradas de um arquivo `.DIG`:
 
 ```bash
-swift run --package-path Packages/UCKit -c release uc-tool dig verify <disco-montado>/CFC_UK.DIG
+swift run --package-path Packages/UCKit -c release uc-tool disc info <seu-disco>.iso
 ```
 
 Extrair as entradas e os sub-arquivos:

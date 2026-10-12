@@ -14,15 +14,12 @@ public final class GameRuntime {
 
     public private(set) var tick: UInt64 = 0
     public private(set) var input = InputState()
-    public let data: GameData?
     /// Pacing state, exposed for a performance readout (measured refresh, vsync lock).
     public private(set) var pacer = FramePacer()
 
     private let inputSource = InputSource()
 
-    public init(data: GameData?) {
-        self.data = data
-    }
+    public init() {}
 
     public var time: Double { Double(tick) * Self.tickDuration }
 
@@ -44,15 +41,41 @@ public final class GameRuntime {
     }
 }
 
-/// The user's own disc contents, opened from the ISO mount or an extracted folder.
+/// The user's own disc, opened in place from the `.iso` (or a folder with its files).
 public struct GameData: Sendable {
-    public let root: URL
+    public let disc: DiscImage
     public let archive: DIGArchive
+    public let language: String
 
-    /// `language` selects `CFC.DIG` (nil, Japanese voices) or `CFC_<code>.DIG`, as `FUN_00127300` does.
-    public init(root: URL, language: String? = "UK") throws {
-        self.root = root
-        let name = language.map { "CFC_\($0).DIG" } ?? "CFC.DIG"
-        archive = try DIGArchive(url: root.appending(path: name))
+    /// Archives on the PAL disc: `CFC_<code>.DIG` (text + English voices) per language, as
+    /// selected by `FUN_00127300`.
+    public static let languages = ["UK", "FR", "DE", "ES", "IT"]
+
+    public init(disc: DiscImage, language: String = GameData.preferredLanguage) throws {
+        try disc.validate()
+        self.disc = disc
+        self.language = language
+        archive = try DIGArchive(file: try disc.file("CFC_\(language).DIG"))
+    }
+
+    public init(url: URL) throws {
+        try self.init(disc: try DiscImage(url: url))
+    }
+
+    /// The device language when the disc has it, English otherwise.
+    public static var preferredLanguage: String {
+        let code = Locale.current.language.languageCode?.identifier.uppercased() ?? "EN"
+        return languages.contains(code) ? code : "UK"
+    }
+
+    /// Character-select face atlas (entry 39, sub-file 0, texture 1): Naruto, Choji, Sakura,
+    /// Gaara, Kankuro and Rock Lee, decoded from the disc.
+    public func characterFaces() throws -> DecodedTexture? {
+        let entry = archive.entries[39]
+        let data = try archive.read(entry)
+        let table = DIGSubfileTable(data, count: Int(entry.subfileCount))
+        guard let subfile = table.subfiles.first(where: { $0.index == 0 }) else { return nil }
+        let textures = TextureSet.decode(Array(table.slice(subfile, of: data)))
+        return textures.count > 1 ? textures[1] : nil
     }
 }

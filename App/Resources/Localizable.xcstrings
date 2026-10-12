@@ -1,0 +1,129 @@
+{
+  "sourceLanguage": "en",
+  "strings": {
+    "Character portraits decoded from the disc": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retratos dos personagens decodificados do disco"
+          }
+        }
+      }
+    },
+    "Choose Another Disc": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Escolher outro disco"
+          }
+        }
+      }
+    },
+    "Choose Disc Image": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Escolher imagem do disco"
+          }
+        }
+      }
+    },
+    "Disc recognized": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disco reconhecido"
+          }
+        }
+      }
+    },
+    "Importing a disc on Apple TV isn't available yet. Use the app on iPhone, iPad or Mac for now.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ainda não dá para importar o disco no Apple TV. Por enquanto, use o app no iPhone, iPad ou Mac."
+          }
+        }
+      }
+    },
+    "Naruto: Uzumaki Chronicles 2": {
+      "shouldTranslate": false
+    },
+    "Reading the disc…": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lendo o disco…"
+          }
+        }
+      }
+    },
+    "SLES-55090 · CFC_%@.DIG · %lld entries": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SLES-55090 · CFC_%1$@.DIG · %2$lld entradas"
+          }
+        }
+      }
+    },
+    "The disc is missing %@.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Falta o arquivo %@ no disco."
+          }
+        }
+      }
+    },
+    "These portraits were decoded on this device from your disc. The game itself is still being rebuilt from the original code, so there's nothing to play yet.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Estes retratos foram decodificados neste aparelho a partir do seu disco. O jogo em si ainda está sendo reconstruído a partir do código original, então ainda não há o que jogar."
+          }
+        }
+      }
+    },
+    "This disc isn't Naruto: Uzumaki Chronicles 2 (PAL, SLES-55090).": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este disco não é o Naruto: Uzumaki Chronicles 2 (PAL, SLES-55090)."
+          }
+        }
+      }
+    },
+    "This file isn't a PS2 disc image (ISO 9660).": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este arquivo não é uma imagem de disco de PS2 (ISO 9660)."
+          }
+        }
+      }
+    },
+    "To play, choose your own copy of the game as a disc image (.iso): the European PAL release, SLES-55090. Nothing is copied: the app reads the file where it is.": {
+      "localizations": {
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Para jogar, escolha a sua cópia do jogo como imagem de disco (.iso): a versão europeia PAL, SLES-55090. Nada é copiado: o app lê o arquivo onde ele está."
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}

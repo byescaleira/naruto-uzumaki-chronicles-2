@@ -1,32 +1,16 @@
 import SwiftUI
 import UCEngine
 
-/// Hosts the Metal surface edge to edge: no safe-area insets, no letterboxing.
-struct GameScreen: View {
-    let runtime: GameRuntime
-
-    var body: some View {
-        GameSurface(runtime: runtime)
-            .background(.black)
-            .overlay(alignment: .bottomLeading) {
-                if runtime.data == nil {
-                    Text("Game data not found — set NUC2_DATA to the mounted disc")
-                        .font(.caption.monospaced())
-                        .foregroundStyle(.white.opacity(0.7))
-                        .padding()
-                }
-            }
-    }
-}
-
 #if os(macOS)
-private struct GameSurface: NSViewRepresentable {
+/// The Metal surface, edge to edge: no safe-area insets, no letterboxing.
+struct GameSurface: NSViewRepresentable {
     let runtime: GameRuntime
     func makeNSView(context: Context) -> GameSurfaceView { GameSurfaceView(runtime: runtime) }
     func updateNSView(_ view: GameSurfaceView, context: Context) {}
 }
 #else
-private struct GameSurface: UIViewControllerRepresentable {
+/// The Metal surface, edge to edge: no safe-area insets, no letterboxing.
+struct GameSurface: UIViewControllerRepresentable {
     let runtime: GameRuntime
     func makeUIViewController(context: Context) -> GameViewController { GameViewController(runtime: runtime) }
     func updateUIViewController(_ controller: GameViewController, context: Context) {}
