@@ -1,6 +1,7 @@
 import CryptoKit
 import Foundation
 import ImageIO
+import UCAudio
 import UCFormats
 import UniformTypeIdentifiers
 
@@ -11,6 +12,11 @@ import UniformTypeIdentifiers
 //   uc-tool dig extract <CFC.DIG> <out-dir> [entry...]
 //   uc-tool afs list    <file.AFS>
 //   uc-tool afs extract <file.AFS> <out-dir>
+//   uc-tool adx info    <file.AFS>
+//   uc-tool adx decode  <file.AFS> <index> <out.wav> [loops=0]
+//   uc-tool adx verify  <file.AFS>
+//   uc-tool adx mix     <file.AFS> <index> <out.wav> <seconds>   — offline, through UCAudio
+//   uc-tool adx play    <file.AFS> <index> [seconds=15] [volume=1]
 //   uc-tool disc info   <disc.iso | disc-folder>
 //   uc-tool tex extract <disc.iso | disc-folder> <out-dir> <entry> <subfile> [archive=CFC_UK.DIG]
 //   uc-tool pack        <disc.iso> <out-dir>   — the files the app embeds (GameData/)
@@ -29,11 +35,40 @@ enum GamePack {
 
 let arguments = Array(CommandLine.arguments.dropFirst())
 guard arguments.count >= 3 else {
-    fail("usage: uc-tool (dig|afs) (list|verify|extract) <archive> [out-dir] [entry...]")
+    fail("usage: uc-tool (dig|afs|adx|disc|tex|pack) <command> <archive> [arguments...]")
 }
 let archiveURL = URL(fileURLWithPath: arguments[arguments[0] == "pack" ? 1 : 2])
 
 func hex(_ value: some BinaryInteger) -> String { "0x" + String(value, radix: 16) }
+
+/// 16-bit PCM RIFF/WAVE of interleaved samples.
+func wav(_ samples: [Int16], channels: Int, rate: Int) -> Data {
+    var data = Data(capacity: 44 + samples.count * 2)
+    func u32(_ v: Int) { withUnsafeBytes(of: UInt32(v).littleEndian) { data.append(contentsOf: $0) } }
+    func u16(_ v: Int) { withUnsafeBytes(of: UInt16(v).littleEndian) { data.append(contentsOf: $0) } }
+    data.append(contentsOf: Array("RIFF".utf8)); u32(36 + samples.count * 2)
+    data.append(contentsOf: Array("WAVEfmt ".utf8)); u32(16); u16(1); u16(channels)
+    u32(rate); u32(rate * channels * 2); u16(channels * 2); u16(16)
+    data.append(contentsOf: Array("data".utf8)); u32(samples.count * 2)
+    samples.withUnsafeBytes { data.append(contentsOf: $0) }
+    return data
+}
+
+/// Decodes `count` sample frames of an ADX stream through ``ADXCursor`` (following the loop).
+func render(_ stream: Data, header: ADXHeader, count: Int, loops: Bool) -> [Int16] {
+    var cursor = ADXCursor(header: header, loops: loops)
+    var cache = [Int16](repeating: 0, count: cursor.cacheCount)
+    var out = [Int16]()
+    out.reserveCapacity(count * header.channelCount)
+    stream.withUnsafeBytes { raw in
+        cache.withUnsafeMutableBufferPointer { cache in
+            _ = cursor.read(raw, count: count, cache: cache.baseAddress!) { run, n in
+                out.append(contentsOf: UnsafeBufferPointer(start: run, count: n * header.channelCount))
+            }
+        }
+    }
+    return out
+}
 
 func writePNG(_ texture: DecodedTexture, to url: URL) throws {
     let provider = CGDataProvider(data: Data(texture.rgba) as CFData)!
@@ -112,6 +147,169 @@ case ("afs", "extract"):
         try archive.read(entry).write(to: out.appending(path: name))
     }
     print("extracted \(archive.entries.count) files")
+
+case ("adx", "info"):
+    // One line per entry: codec, layout, length, loop; then a summary of the codecs found.
+    let archive = try AFSArchive(url: archiveURL)
+    var codecs: [String: Int] = [:]
+    var looped = 0, misaligned = 0
+    for entry in archive.entries {
+        let name = entry.name ?? "-"
+        guard let header = try? ADXHeader(archive.read(entry, prefix: ADXHeader.maximumHeaderSize)) else {
+            codecs["not ADX", default: 0] += 1
+            print("\(entry.index)\t\(name)\tnot ADX\tsize=\(entry.size)")
+            continue
+        }
+        let codec = "\(header.encoding) v\(header.version) \(header.bitsPerSample)-bit/\(header.frameSize)B"
+            + (header.isEncrypted ? " encrypted" : "")
+        codecs[codec, default: 0] += 1
+        // Bytes the declared sample count needs; the encoder appends an end-of-stream frame.
+        let frames = (header.sampleCount + header.samplesPerFrame - 1) / header.samplesPerFrame
+        let needed = header.dataOffset + frames * header.frameSize * header.channelCount
+        var loop = "-"
+        if let l = header.loop {
+            looped += 1
+            let block = header.frameSize * header.channelCount
+            let aligned = l.startByte == header.dataOffset + l.start / header.samplesPerFrame * block
+            if !aligned { misaligned += 1 }
+            loop = "\(l.start)…\(l.end)" + (aligned ? "" : " (start byte \(l.startByte) off-frame)")
+        }
+        print("\(entry.index)\t\(name)\t\(codec)\t\(header.channelCount)ch\t\(header.sampleRate)Hz\t"
+              + "\(header.sampleCount)\t\(String(format: "%.2f", header.duration))s\tloop=\(loop)\t"
+              + "data=\(needed <= Int(entry.size) ? "ok" : "short by \(needed - Int(entry.size))")")
+    }
+    for (codec, count) in codecs.sorted(by: { $0.value > $1.value }) { print("# \(count)× \(codec)") }
+    print("# \(archive.entries.count) entries, \(looped) looped, \(misaligned) loop starts off-frame")
+
+case ("adx", "decode"):
+    guard arguments.count >= 5, let index = Int(arguments[3]) else {
+        fail("usage: uc-tool adx decode <file.AFS> <index> <out.wav> [loops=0]")
+    }
+    let archive = try AFSArchive(url: archiveURL)
+    guard archive.entries.indices.contains(index) else { fail("no entry \(index)") }
+    let stream = try archive.read(archive.entries[index])
+    let extraLoops = arguments.count > 5 ? Int(arguments[5]) ?? 0 : 0
+    let clock = ContinuousClock.now
+    var (header, samples) = try ADXDecoder.decode(stream)
+    let elapsed = ContinuousClock.now - clock
+    if extraLoops > 0, let loop = header.loop {
+        samples = render(stream, header: header, count: loop.end + extraLoops * (loop.end - loop.start), loops: true)
+    }
+    var sum = 0.0, peak = 0, clipped = 0
+    for s in samples {
+        let v = Int(s)
+        sum += Double(v * v)
+        peak = max(peak, abs(v))
+        if v >= 32767 || v <= -32768 { clipped += 1 }
+    }
+    let rms = samples.isEmpty ? 0 : (sum / Double(samples.count)).squareRoot()
+    try wav(samples, channels: header.channelCount, rate: header.sampleRate).write(to: URL(fileURLWithPath: arguments[4]))
+    let frames = samples.count / header.channelCount
+    print("entry \(index): \(header.channelCount)ch \(header.sampleRate)Hz, \(frames) samples "
+          + "(\(String(format: "%.2f", Double(frames) / Double(header.sampleRate)))s, header \(header.sampleCount)), "
+          + "decoded in \(elapsed); RMS \(String(format: "%.1f", rms)) (\(String(format: "%.1f", 20 * log10(max(rms, 1) / 32768))) dBFS), "
+          + "peak \(peak), \(clipped) clipped")
+    if let loop = header.loop { print("loop \(loop.start)…\(loop.end)\(extraLoops > 0 ? " rendered \(extraLoops) extra pass(es)" : "")") }
+
+case ("adx", "verify"):
+    // Decodes every entry: the data must reach the header's sample count; reports level,
+    // clipping and the jump at each loop seam against the stream's typical sample step.
+    let archive = try AFSArchive(url: archiveURL)
+    let clock = ContinuousClock.now
+    var decodedSamples = 0, failures = 0
+    for entry in archive.entries {
+        guard let stream = try? archive.read(entry), let header = try? ADXHeader(stream), header.isDecodable else {
+            failures += 1
+            print("\(entry.index)\tnot decodable")
+            continue
+        }
+        let samples = render(stream, header: header, count: header.sampleCount, loops: false)
+        let channels = header.channelCount
+        decodedSamples += samples.count
+        var sum = 0.0, clipped = 0
+        for s in samples {
+            sum += Double(Int(s) * Int(s))
+            if s == .max || s == .min { clipped += 1 }
+        }
+        let rms = (sum / Double(max(samples.count, 1))).squareRoot()
+        var seam = "-"
+        if let loop = header.loop, loop.end >= 2 {
+            // Linear-prediction error of the jump (x[end-1], x[end-2] → x[start]) and the
+            // share of the track's own samples that are at least as unpredictable.
+            func x(_ i: Int, _ c: Int) -> Int { Int(samples[i * channels + c]) }
+            var worst = 0.0
+            for c in 0 ..< channels {
+                let error = abs(x(loop.start, c) - (2 * x(loop.end - 1, c) - x(loop.end - 2, c)))
+                var rarer = 0
+                for i in 2 ..< samples.count / channels where abs(x(i, c) - (2 * x(i - 1, c) - x(i - 2, c))) >= error {
+                    rarer += 1
+                }
+                worst = max(worst, 100 - 100 * Double(rarer) / Double(samples.count / channels))
+            }
+            seam = String(format: "p%.1f", worst)
+        }
+        let complete = samples.count == header.sampleCount * channels
+        if !complete { failures += 1 }
+        print("\(entry.index)\t\(complete ? "ok" : "SHORT \(samples.count / channels)/\(header.sampleCount)")\t"
+              + "rms=\(String(format: "%.0f", rms))\tclipped=\(clipped)\tseam=\(seam)")
+    }
+    let elapsed = ContinuousClock.now - clock
+    print("# \(archive.entries.count - failures) ok, \(failures) failures, \(decodedSamples) samples in \(elapsed)")
+    if failures > 0 { exit(2) }
+
+case ("adx", "mix"):
+    // Renders the playback path (AudioSystem's music bus, AVAudioEngine offline) and checks
+    // it against the cursor's own loop-following decode.
+    guard arguments.count >= 6, let index = Int(arguments[3]), let seconds = Double(arguments[5]) else {
+        fail("usage: uc-tool adx mix <file.AFS> <index> <out.wav> <seconds>")
+    }
+    let archive = try AFSArchive(url: archiveURL)
+    let stream = try archive.read(archive.entries[index])
+    let track = try ADXTrack(stream)
+    let system = try AudioSystem.offline()
+    try system.start()
+    system.play(track, on: .music)
+    let total = Int(seconds * AudioSystem.sampleRate)
+    var mixed: [Int16] = []
+    mixed.reserveCapacity(total * 2)
+    var peakError: Float = 0
+    let reference = render(stream, header: track.header, count: total, loops: true)
+    let channels = track.header.channelCount
+    let clock = ContinuousClock.now
+    while mixed.count < total * 2 {
+        let buffer = try system.renderOffline(frames: min(4096, total - mixed.count / 2))
+        let left = buffer.floatChannelData![0], right = buffer.floatChannelData![1]
+        for i in 0 ..< Int(buffer.frameLength) {
+            let frame = mixed.count / 2
+            for (c, value) in [left[i], right[i]].enumerated() where frame < reference.count / channels {
+                let expected = Float(reference[frame * channels + min(c, channels - 1)]) / 32768
+                peakError = max(peakError, abs(value - expected))
+            }
+            mixed.append(Int16(max(-32768, min(32767, (left[i] * 32768).rounded()))))
+            mixed.append(Int16(max(-32768, min(32767, (right[i] * 32768).rounded()))))
+        }
+    }
+    let elapsed = ContinuousClock.now - clock
+    try wav(mixed, channels: 2, rate: Int(AudioSystem.sampleRate)).write(to: URL(fileURLWithPath: arguments[4]))
+    print("mixed \(String(format: "%.1f", seconds))s in \(elapsed); peak difference to the decoder \(peakError) "
+          + "(\(String(format: "%.1f", 20 * log10(max(peakError, 1e-9)))) dBFS)")
+
+case ("adx", "play"):
+    guard arguments.count >= 4, let index = Int(arguments[3]) else {
+        fail("usage: uc-tool adx play <file.AFS> <index> [seconds=15] [volume=1]")
+    }
+    let archive = try AFSArchive(url: archiveURL)
+    let track = try ADXTrack(archive: archive, index: index)
+    let seconds = arguments.count > 4 ? Double(arguments[4]) ?? 15 : 15
+    let system = AudioSystem()
+    system.setVolume(arguments.count > 5 ? Float(arguments[5]) ?? 1 : 1, for: .music)
+    try system.start()
+    system.play(track, on: .music, fadeIn: .milliseconds(500))
+    print("playing entry \(index) (\(String(format: "%.1f", track.header.duration))s, loop \(track.header.loop.map { "\($0.start)…\($0.end)" } ?? "none"))")
+    RunLoop.main.run(until: Date(timeIntervalSinceNow: seconds))
+    print("still playing: \(system.isPlaying(.music))")
+    system.stop(.music, fadeOut: .seconds(1))
+    RunLoop.main.run(until: Date(timeIntervalSinceNow: 1.2))
 
 case ("disc", "info"):
     let disc = try DiscImage(url: archiveURL)
