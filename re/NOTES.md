@@ -30,7 +30,7 @@ The Ghidra install also needs the extension copied into
 | `SLES_550.90` | EE executable, ELF32 MIPS-III, `e_flags = 0x20924000` (R5900, EABI64), stripped |
 | `CFC*.DIG` | Main archives, one per language (UK, FR, DE, ES, IT, and `*JP` = Japanese voices) |
 | `XA/XA.AFS`, `XA/XAVOICE.AFS` (+ `XAJP/`) | CRI AFS, audio streams (ADX, `CRI_ADXI.IRX`) |
-| `MV/MV00.DSI` | Movie stream — format not analysed yet |
+| `MV/MV00.DSI` | The intro movie: MPEG-2 video + SPU ADPCM audio in 0x40000-byte blocks (see *Movie*) |
 | `N*.DIR` | Text lists of the archives per language |
 | `*.IRX`, `IOPRP254.IMG` | IOP modules (pad, memory card, sound, ADX) |
 
@@ -76,7 +76,6 @@ empty sub-files may share an offset; entries are 16-byte padded at the end.
   identify textures (TIM2/raw GS), models (VIF/GIF packets), motions (`"old motion file"`
   string), scripts, text.
 - What reads each entry: trace callers of the request API (`FUN_001292e0` queue producers).
-- `MV00.DSI` container and codec.
 - Game logic tick rate (PAL 50 Hz) vs the 60 Hz reimplementation.
 
 ## Textures (UI / sprite sub-files)
@@ -104,3 +103,45 @@ python3 -I re/scripts/contact.py <dig-extract-dir> <tex-out-dir> 64
 swiftc -O re/scripts/MakeIcon.swift -o .build/make-icon
 .build/make-icon <tex-out-dir>/0039_00_001.png <tex-out-dir>/0216_00_004.png .
 ```
+
+## Movie (`MV/MV00.DSI`)
+
+One movie: the 109.28 s intro (2732 frames). Found from the path string `\MV\MV00.DSI;1`
+(`0x50c848`), referenced by a 2-entry table at `0x34c3d0` (0x14 bytes each:
+`{char *path, u32 width = 512, u32 height = 448, u32 0x00740001, u32 seek flag}`; both entries
+are the same file with the seek flag 0). `FUN_00131b30` starts playback of entry
+`param[0xe]`: it calls `FUN_00128230(path, w, h, …)` and allocates three 512×448×4 frame
+buffers. When an entry's seek flag is set it loads DIG entry 0x74 and takes a
+`{u32 offset, u32 size}` pair from it, so the engine supports several movies in one DSI; this
+disc does not use it.
+
+Player task (`FUN_00128230` → state machine at `LAB_001288e0`):
+
+- `FUN_00128840`: 1 MiB ring = 4 × 0x40000 blocks (`FUN_001bf7f0(ring, buf, 4, 0x40000, 2)`),
+  sinks registered by stream id with `FUN_001bf7c0`: **0xFFFFC000 → video** (`+0x6c`),
+  **0xFFFFE000 → audio** (`+0x50`); `FUN_001bf6e0` queues the file read (I/O ring at `0x54a420`).
+- `FUN_001bfa20` finds a sink's chunk in a block: `u32 count`, then `count × {u32 offset,
+  s32 stream id, u32 size}` from +4 (offset relative to the block). Data starts at 0x40;
+  the rest of each block is zero padding. Every MV00 block holds one video then one audio chunk.
+- Video: `FUN_001d8fe0(w, h)` creates the `sceMpeg` decoder (`FUN_00107f78` = `sceMpegCreate`
+  on `0x553d00`, `FUN_00108390` = `sceMpegAddCallback`; `[MPEG ERROR]%s` at `0x50a628`) — the
+  stock libmpeg / IPU path, so the stream is plain MPEG-2.
+- Audio: `FUN_00128520` → `FUN_001d9960(1, 1, 0x5040, 0, 1, …, volL, volR, pull = FUN_001289b0,
+  release = FUN_00128970)`, a 0x40-byte command (`0x20000`) on the ring at `0x5560c0` that
+  `FUN_001da690` sends to the IOP sound server over SIF RPC (`FUN_0010d028`). Volumes are
+  `vol × 0x3FFF >> 7`, mono when `DAT_00517488` (the sound option) is set.
+
+| Stream | MV00 |
+| --- | --- |
+| Blocks | 205 × 0x40000 (53,739,520 bytes) |
+| Video | 43,712,064 bytes, MPEG-2 MP@ML, 512×448, 25 fps, progressive, 3.2 Mbit/s nominal, 217 GOPs (≈ 12.6 frames each; I 217 / P 842 / B 1673), aspect code 1, PAL, BT.470 B/G colour tags, encoded by TMPGEnc 2.524, ends with a sequence end code. ffmpeg decodes it without errors. |
+| Audio | 5,994,496 bytes, SPU ADPCM (16-byte frames, 28 samples), stereo interleaved every 0x100 bytes (L, R, L, R…), 5,245,184 samples per channel |
+
+The audio rate is not in the file (it reaches the IOP at run time); **48 kHz** makes the audio
+109.275 s for 109.280 s of video, and scene cuts line up with audio onsets with no drift over
+the whole movie (at 44.1 kHz the audio would be 8.8 s longer). Display: the 512×448 frame
+fills a 4:3 TV (round objects such as the opening sphere are only round at 4:3), so the pixel
+aspect is 7:6 and the stream's "square samples" flag is wrong.
+
+`UCFormats.DSIMovie` demuxes it, `MPEGVideoStream` summarises the video, `SPUADPCMDecoder`
+decodes the audio; `uc-tool movie info|convert` (package time, ffmpeg) makes the HEVC/AAC file.
