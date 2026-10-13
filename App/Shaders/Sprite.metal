@@ -51,7 +51,9 @@ vertex SpriteOut sprite_vertex(uint vid [[vertex_id]],
 //   0x44: Cs·As + Cd·(1 − As)     0x48: Cs·As + Cd     0x42: Cd − Cs·As
 fragment half4 sprite_fragment(SpriteOut in [[stage_in]],
                                texture2d_array<half> atlas [[texture(0)]]) {
-    constexpr sampler bilinear(filter::linear, address::clamp_to_edge);
+    // High-resolution atlases carry mipmaps (trilinear when drawn smaller); the game's own
+    // textures have one level, so this stays the plain bilinear sample there.
+    constexpr sampler bilinear(filter::linear, mip_filter::linear, address::clamp_to_edge);
     const float2 st = clamp(in.uv, in.clampRect.xy, in.clampRect.zw);
     const half4 texel = atlas.sample(bilinear, st, in.layer);
     const float alpha = float(texel.a) * in.color.a;

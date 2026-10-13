@@ -211,6 +211,10 @@ public final class GameSurfaceView: PlatformView {
         let size = CGSize(width: bounds.width * scale, height: bounds.height * scale)
         if size.width > 0, size.height > 0, metalLayer.drawableSize != size {
             metalLayer.drawableSize = size
+            #if DEBUG
+            Logger(subsystem: "com.byescaleira.nuc2", category: "display").info(
+                "drawable \(Int(size.width), privacy: .public)×\(Int(size.height), privacy: .public) (scale \(Double(scale), privacy: .public))")
+            #endif
         }
     }
 

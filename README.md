@@ -34,7 +34,7 @@ Projeto em andamento. O que já existe e foi verificado:
 | **Texturas** | Formato das texturas de UI/sprites decifrado, com emulação do *swizzle* da memória do GS: **3651 texturas** extraídas do disco inglês. |
 | **Áudio** | Decodificador CRI **ADX** em Swift puro, com as regras do próprio jogo (coeficientes, escala, histórico inicial e loop lidos como em `ADXB_DecodeHeaderAdx`). As **131 músicas** e as **2002 vozes** (inglês e japonês) decodificam inteiras, ≈ 170 milhões de amostras/s. Reprodução em streaming com `AVAudioEngine`: barramentos de música e voz, loops sem emenda, fades, sem alocação nem trava na thread de áudio. |
 | **Modelos 3D** | Formato dos modelos com esqueleto decifrado (VIF + programas de microcódigo VU1, ossos, partes e materiais): os **78 modelos** do disco, Naruto inclusive, decodificam texturizados na pose de repouso. |
-| **Vídeo** | `MV00.DSI` é MPEG-2 512×448 a 25 fps com áudio SPU ADPCM estéreo a 48 kHz, em blocos de 0x40000 bytes. A abertura (109 s) entra no pacote já em **HEVC Main10 + AAC** (25 MB, sincronia de 0 amostras) e toca com `AVPlayer`. |
+| **Vídeo** | `MV00.DSI` é MPEG-2 512×448 a 25 fps com áudio SPU ADPCM estéreo a 48 kHz, em blocos de 0x40000 bytes. A abertura (109 s) entra no pacote já em **HEVC Main10 + AAC**, ampliada 4× pelo **Super Resolution da Apple** (2048×1792, pixels 7:6, 131 MB, sincronia de 0 amostras), e toca com `AVPlayer`. |
 | **2D / menus** | Animações, objetos e camadas 2D reimplementados a partir dos dados do próprio jogo, com renderizador de sprites em Metal 4 e Metal clássico. **A tela de título, o menu principal e o SELECT MODE** rodam exatamente como o jogo compõe, com as animações e os fades de tela. |
 | **App** | iOS, iPadOS, macOS e tvOS, com os dados **embutidos**. Abre na **abertura**, que pode ser pulada. Depois vem a **tela de título**, com a música e o locutor que o próprio jogo usa (`FUN_001aaed0`: bg093 com fade-in e uma fala aleatória). PRESS START e BEGIN!/CONTINUE!/OPTIONS funcionam com controle, teclado, toque (tocar e deslizar) e Siri Remote. BEGIN! e CONTINUE! levam ao **SELECT MODE** (bg117, roda de 11 modos, retratos do grupo, falas do locutor para cada modo), e RETURN TO TITLE volta ao título. |
 | **Ainda não** | O modo história (no original, BEGIN! entra direto nele; aqui abre o SELECT MODE), as telas de opções e de save, os modos do SELECT MODE, animações dos modelos, fases, lógica de jogo e efeitos sonoros. |
@@ -165,6 +165,20 @@ swift run --package-path Packages/UCKit -c release uc-tool screen render GameDat
 swift run --package-path Packages/UCKit -c release uc-tool movie info <seu-disco>.iso
 ```
 
+Super Resolution (Apple silicon, macOS 26): texturas de uma tela e a abertura em 4×, e a tela renderizada com elas:
+
+```bash
+swift run --package-path Packages/UCKit -c release uc-tool hd sprites GameData/CFC_UK.DIG GameData 40/1
+```
+
+```bash
+swift run --package-path Packages/UCKit -c release uc-tool movie convert <seu-disco>.iso mv --super-resolution
+```
+
+```bash
+swift run --package-path Packages/UCKit -c release uc-tool screen render GameData/CFC_UK.DIG modes modes.png 3840x2160 --hd GameData
+```
+
 ## 🎨 Ícone
 
 <p align="center"><img src="docs/images/icon-variants.png" alt="Ícone nas variantes padrão, escura, clara e tingida" width="80%"></p>
@@ -184,6 +198,7 @@ Scale2x para manter os contornos. O fundo é o padrão karakusa verde dos menus 
 | **Metal 4** | `MTL4CommandQueue`, `MTL4CommandAllocator`, argument tables, residency sets e `MTL4Compiler` no iPhone, iPad e Mac. O SDK do tvOS 27 não tem Metal 4 e o do simulador traz os headers vazios; nos dois casos o app usa o Metal clássico com os mesmos shaders. |
 | **HDR** | Cena em `rgba16Float` linear e depois uma transformação de saída. EDR em Display P3 estendido no iPhone, iPad e Mac. PQ BT.2100 (HDR10) no Apple TV, que pede à TV o modo **Dolby Vision 4K 60 Hz** via `AVDisplayManager`. Apps não conseguem gerar Dolby Vision em tempo real, então o tvOS converte o HDR10 para o modo da TV. |
 | **4K a 60 Hz** | Drawable na resolução nativa do painel (3840×2160 no Apple TV 4K) e `CAMetalDisplayLink` pedindo 60 Hz. |
+| **Alta resolução** | A arte do PS2 tem 512×448, e numa TV 4K cada pixel vira quase 5. Na hora de montar o pacote, no Mac, o **Super Resolution do VideoToolbox** (`VTFrameProcessor`, modelo de ML da Apple) amplia 4× a abertura (modo vídeo, que usa os quadros anteriores) e as texturas 2D das telas prontas (modo imagem: cor com as bordas transparentes preenchidas, alpha numa segunda passada, 16 px de margem espelhada para não criar emendas entre blocos). O tvOS não tem essa API, por isso o app recebe o resultado pronto: custo zero na Apple TV. As texturas HD sobem com mipmaps gerados na GPU, e as coordenadas de textura continuam as do jogo. O MetalFX não ajudaria aqui, porque a cena já é renderizada na resolução nativa. |
 | **Ritmo pelo tempo medido** | O jogo avança pelo tempo real, nunca pela taxa anunciada da tela ([`FramePacer`](Packages/UCKit/Sources/UCEngine/FramePacer.swift)). Perto de 60 ou 120 Hz trava no vsync (exatamente 1 tick por quadro, sem tremido de 0/2 ticks) e conta vsyncs perdidos. Em 50, 30 Hz ou taxa variável segue o relógio. Depois de uma parada (troca de modo da TV, troca de app) descarta o atraso em vez de acelerar. Os casos têm testes: ProMotion caindo para 60 Hz, vsync perdido, 50/30 Hz, parada longa. Em Debug, o log `com.byescaleira.nuc2/pacing` mostra fps real, ticks/s, CPU e GPU por quadro. |
 | **Cor** | A cena é linear BT.709. A saída converte a gama com matrizes conferidas (as linhas somam 1, então o branco continua branco). Só os realces passam do branco SDR, e eles são comprimidos por uma curva suave, sem corte seco. A margem é a EDR **atual** da tela, lida a cada quadro. No Apple TV com TV SDR o app gera sRGB, em vez de mandar PQ para o sistema converter. Em Debug, `NUC2_OUTPUT=edr\|pq\|sdr` força cada caminho. |
 | **Só paisagem, sem bordas** | Só paisagem, sem status bar nem home indicator, gestos de borda adiados e a superfície ignorando a safe area. No iPad (iPadOS 26) a orientação é travada em tempo de execução e a cena fica do tamanho da tela (`UISceneSizeRestrictions`), sem o `UIRequiresFullScreen` obsoleto. No Mac a janela entra e permanece em tela cheia. A abertura preenche a tela cortando em cima e embaixo, sem barras. |
@@ -230,11 +245,12 @@ open NarutoUC2.xcodeproj
 ### 📀 Dados do jogo embutidos
 
 O app embute uma parte do disco: `SYSTEM.CNF`, `CFC_UK.DIG`, `XA/` com as vozes em inglês e a música, e a
-abertura já convertida para HEVC + AAC (`MV/MV00.mp4`, formato 2 do pacote). São cerca de 1,08 GB numa pasta
-`GameData/`. **Esses dados nunca entram neste repositório.**
+abertura já convertida para HEVC + AAC em 4× (`MV/MV00.mp4`) e as texturas 2D em 4× (`HD/`, formato 3 do pacote).
+São cerca de 1,24 GB numa pasta `GameData/`. **Esses dados nunca entram neste repositório.**
 
-- [`scripts/make_game_data.sh`](scripts/make_game_data.sh) gera `GameData/` a partir da sua ISO (`uc-tool pack`) e
-  um pacote reprodutível, com o mesmo SHA-256 para o mesmo disco.
+- [`scripts/make_game_data.sh`](scripts/make_game_data.sh) gera `GameData/` a partir da sua ISO (`uc-tool pack`, uns
+  35 minutos por causa do Super Resolution da abertura) e um pacote com ordem, datas e donos fixos. As partes
+  copiadas do disco têm sempre o mesmo SHA-256; as ampliadas por ML podem variar entre Macs e versões do sistema.
 - [`scripts/publish_game_data.sh`](scripts/publish_game_data.sh) envia o pacote como *release* de um repositório
   **privado**.
 - [`scripts/fetch_game_data.sh`](scripts/fetch_game_data.sh) baixa, confere pelo [`GameData.lock`](GameData.lock)

@@ -446,3 +446,19 @@ Open: the menu items' own update/draw callbacks (`0x1a9750`, `0x1aa370`, not fun
 database), the story start (`FUN_00137a80`), the options screen (`0x1aa500`), the SELECT MODE text
 window and its `12/3` strings, the 50 Hz vs 60 Hz tick of the 2D animations (the port ticks them at
 60 Hz), the character select / versus / loading screen modules.
+
+## High-resolution package (format 3)
+
+Not from the binary: a port-side addition. `uc-tool pack` runs Apple's VideoToolbox super-resolution
+scaler (`VTSuperResolutionScalerConfiguration`, macOS 26 / iOS 26 only, scale factor 4 only, `64RGBAHalf`,
+models downloaded once by the framework; tvOS has no such API) on:
+- the intro, in video mode (sequential submissions), 512×448 → 2048×1792 with the 7:6 pixel aspect kept,
+  libx265 CRF 20 medium: 131 MB, ~1.3 frames/s end to end;
+- the 2D textures of the implemented screens (`0040/00`, `0040/01`), in image mode. The scaler returns
+  opaque pixels, so colour (transparent texels bled from their neighbours) and alpha (as grey) run
+  separately; a 16 px mirrored margin avoids seams where the game butts 256×256 tiles of one picture.
+
+The app swaps `HD/<entry>_<sub>_t<n>.png` in for the decoded texture; texel coordinates stay normalised
+by the original `TEX0` size, REGION_CLAMP is widened back to half a pixel of the upscaled layer, and the
+atlas gets GPU-generated mipmaps. The atlas also scales each layer's coordinates into its padded slice
+(smaller textures of a file used to be sampled as if they filled the slice).

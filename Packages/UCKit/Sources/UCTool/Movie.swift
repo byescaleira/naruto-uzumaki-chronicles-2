@@ -1,3 +1,5 @@
+import CoreMedia
+import CoreVideo
 import Foundation
 import UCFormats
 
@@ -94,6 +96,10 @@ struct MovieConversion {
     var preset = "slow"
     var audioBitRate = "192k"
     var keepStreams = false
+    /// `--super-resolution`: 4× through Apple's video super-resolution scaler (temporal, frame
+    /// by frame) before encoding, 512×448 → 2048×1792 with the same 7:6 pixels. What the app
+    /// embeds: the TV shows it at 2160 lines instead of stretching 448.
+    var superResolution = false
 
     init(arguments: ArraySlice<String>) {
         var iterator = arguments.makeIterator()
@@ -104,6 +110,7 @@ struct MovieConversion {
             case "--preset": preset = iterator.next() ?? preset
             case "--audio-bitrate": audioBitRate = iterator.next() ?? audioBitRate
             case "--keep-streams": keepStreams = true
+            case "--super-resolution": superResolution = true
             default: fail("unknown option \(flag)")
             }
         }
@@ -138,6 +145,15 @@ func movieConvert(_ path: String, to outDirectory: URL, _ settings: MovieConvers
         + "\(audioURL.lastPathComponent) (\(demuxed.audioSamplesPerChannel) samples × \(DSIMovie.audioChannels) ch)")
 
     let output = outDirectory.appending(path: "\(name).mp4")
+    if settings.superResolution {
+        try superResolveMovie(video: videoURL, audio: audioURL, size: (video.width, video.height), rate: rate,
+                              progressive: video.isProgressive, settings: settings, to: output)
+        if !settings.keepStreams {
+            try FileManager.default.removeItem(at: videoURL)
+            try FileManager.default.removeItem(at: audioURL)
+        }
+        return
+    }
     // Interlaced sources would need deinterlacing (bwdif) first; MV00 is progressive.
     var filters: [String] = []
     if !video.isProgressive { filters.append("bwdif=mode=send_frame") }
@@ -196,4 +212,123 @@ func runFFmpeg(_ arguments: [String]) throws {
     try process.run()
     process.waitUntilExit()
     guard process.terminationStatus == 0 else { fail("ffmpeg failed with status \(process.terminationStatus)") }
+}
+
+/// Decodes the MPEG-2 stream to RGB with ffmpeg, runs every frame through Apple's video
+/// super-resolution scaler (in order, so it can use the previous frames), and pipes the 4×
+/// frames into a second ffmpeg that encodes HEVC Main10 and muxes the audio.
+func superResolveMovie(video: URL, audio: URL, size: (width: Int, height: Int), rate: (numerator: Int, denominator: Int),
+                       progressive: Bool, settings: MovieConversion, to output: URL) throws {
+    let scale = SuperResolution.scale
+    let out = (width: size.width * scale, height: size.height * scale)
+    let scaler = try SuperResolution(width: size.width, height: size.height, inputType: .video)
+
+    // BT.601 YCbCr (the IPU's matrix) → full-range RGB, 16 bits per channel.
+    var decodeFilters: [String] = []
+    if !progressive { decodeFilters.append("bwdif=mode=send_frame") }
+    decodeFilters.append("scale=in_color_matrix=bt601:in_range=tv:out_range=pc:flags=accurate_rnd+full_chroma_int,format=rgba64le")
+    let decoder = try ffmpegProcess([
+        "-nostdin", "-hide_banner", "-loglevel", "error",
+        "-f", "mpegvideo", "-framerate", "\(rate.numerator)/\(rate.denominator)", "-i", video.path,
+        "-vf", decodeFilters.joined(separator: ","), "-f", "rawvideo", "-pix_fmt", "rgba64le", "-",
+    ], stdout: true)
+
+    // RGB → BT.709 limited-range 10-bit 4:2:0, 7:6 pixels like the source.
+    let (n, d) = MovieConversion.pixelAspect(width: size.width, height: size.height)
+    let encoder = try ffmpegProcess([
+        "-nostdin", "-y", "-hide_banner", "-loglevel", "error", "-stats",
+        "-f", "rawvideo", "-pix_fmt", "rgba64le", "-video_size", "\(out.width)x\(out.height)",
+        "-framerate", "\(rate.numerator)/\(rate.denominator)", "-color_range", "pc", "-i", "-",
+        "-i", audio.path,
+        "-map", "0:v:0", "-map", "1:a:0", "-map_metadata", "-1", "-map_chapters", "-1",
+        "-vf", "scale=out_color_matrix=bt709:out_range=tv:flags=accurate_rnd+full_chroma_int,format=yuv420p10le,setsar=\(n)/\(d)",
+        "-c:v", "libx265", "-preset", settings.preset, "-crf", "\(settings.crf)", "-pix_fmt", "yuv420p10le",
+        "-profile:v", "main10", "-tag:v", "hvc1",
+        "-x265-params", "log-level=error:colorprim=bt709:transfer=bt709:colormatrix=bt709:range=limited",
+        "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709", "-color_range", "tv",
+        "-c:a", "aac_at", "-b:a", settings.audioBitRate,
+        "-fflags", "+bitexact", "-flags:v", "+bitexact", "-flags:a", "+bitexact",
+        "-movflags", "+faststart", "-brand", "mp42",
+        output.path,
+    ], stdin: true)
+
+    let frameBytes = size.width * size.height * 8
+    guard let reader = decoder.standardOutput as? Pipe, let writer = encoder.standardInput as? Pipe else { fail("ffmpeg pipes") }
+    var frame = 0
+    let started = Date()
+    while true {
+        guard let bytes = try reader.fileHandleForReading.read(upToCount: frameBytes), bytes.count == frameBytes else { break }
+        let source = try SuperResolution.makeBuffer(width: size.width, height: size.height)
+        copy(rgba64: bytes, into: source)
+        let time = CMTime(value: CMTimeValue(frame * rate.denominator), timescale: CMTimeScale(rate.numerator))
+        let upscaled = try scaler.process(source, sequential: true, time: time)
+        try writer.fileHandleForWriting.write(contentsOf: rgba64(from: upscaled))
+        frame += 1
+        if frame % 250 == 0 {
+            print(String(format: "super resolution: %d frames, %.1f fps", frame, Double(frame) / Date().timeIntervalSince(started)))
+        }
+    }
+    try writer.fileHandleForWriting.close()
+    decoder.waitUntilExit()
+    encoder.waitUntilExit()
+    guard decoder.terminationStatus == 0, encoder.terminationStatus == 0 else {
+        fail("ffmpeg failed (decode \(decoder.terminationStatus), encode \(encoder.terminationStatus))")
+    }
+    let bytes = (try FileManager.default.attributesOfItem(atPath: output.path)[.size] as? NSNumber)?.intValue ?? 0
+    print("wrote \(output.lastPathComponent): \(frame) frames super-resolved to \(out.width)×\(out.height) (\(n):\(d) pixels), "
+        + "HEVC Main10 + AAC \(settings.audioBitRate), \(bytes) bytes")
+}
+
+/// Packed `rgba64le` → `64RGBAHalf`.
+private func copy(rgba64 data: Data, into buffer: CVPixelBuffer) {
+    CVPixelBufferLockBaseAddress(buffer, [])
+    defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
+    let width = CVPixelBufferGetWidth(buffer), height = CVPixelBufferGetHeight(buffer)
+    let stride = CVPixelBufferGetBytesPerRow(buffer)
+    let base = CVPixelBufferGetBaseAddress(buffer)!
+    data.withUnsafeBytes { raw in
+        let source = raw.bindMemory(to: UInt16.self)
+        for y in 0 ..< height {
+            let row = base.advanced(by: y * stride).assumingMemoryBound(to: Float16.self)
+            for i in 0 ..< width * 4 { row[i] = Float16(Float(UInt16(littleEndian: source[y * width * 4 + i])) / 65535) }
+        }
+    }
+}
+
+/// `64RGBAHalf` → packed `rgba64le` (alpha forced opaque).
+private func rgba64(from buffer: CVPixelBuffer) -> Data {
+    CVPixelBufferLockBaseAddress(buffer, .readOnly)
+    defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
+    let width = CVPixelBufferGetWidth(buffer), height = CVPixelBufferGetHeight(buffer)
+    let stride = CVPixelBufferGetBytesPerRow(buffer)
+    let base = CVPixelBufferGetBaseAddress(buffer)!
+    var out = [UInt16](repeating: 0, count: width * height * 4)
+    for y in 0 ..< height {
+        let row = base.advanced(by: y * stride).assumingMemoryBound(to: Float16.self)
+        for x in 0 ..< width {
+            for c in 0 ..< 3 {
+                out[(y * width + x) * 4 + c] = UInt16(min(65535, max(0, (Float(row[x * 4 + c]) * 65535).rounded()))).littleEndian
+            }
+            out[(y * width + x) * 4 + 3] = 65535
+        }
+    }
+    return out.withUnsafeBytes { Data($0) }
+}
+
+/// ffmpeg (see ``runFFmpeg(_:)``) with piped stdout or stdin.
+func ffmpegProcess(_ arguments: [String], stdout: Bool = false, stdin: Bool = false) throws -> Process {
+    let environment = ProcessInfo.processInfo.environment
+    let candidates = [environment["FFMPEG"]].compactMap { $0 }
+        + (environment["PATH"] ?? "").split(separator: ":").map { "\($0)/ffmpeg" }
+        + ["/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg"]
+    guard let ffmpeg = candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else {
+        fail("ffmpeg not found (brew install ffmpeg, or set FFMPEG)")
+    }
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: ffmpeg)
+    process.arguments = arguments
+    if stdout { process.standardOutput = Pipe() }
+    if stdin { process.standardInput = Pipe() }
+    try process.run()
+    return process
 }

@@ -46,7 +46,35 @@ func fail(_ message: String) -> Never {
 /// selection or a conversion step changes, so CI fetches a matching package.
 enum GamePack {
     /// 2: the intro movie ships converted (HEVC Main10 + AAC, `MV/MV00.mp4`) instead of `MV/MV00.DSI`.
-    static let format = 2
+    /// 3: Apple's super-resolution scaler at package time: the intro movie at 4× (2048×1792, 7:6
+    /// pixels) and `HD/`, 4× copies of the 2D textures in ``highResolutionSprites``.
+    static let format = 3
+    /// Sprite files (DIG entry, sub-file) shipped with high-resolution textures: the screens the
+    /// app shows so far (title, SELECT MODE). Grows with the screens.
+    static let highResolutionSprites = [(40, 0), (40, 1)]
+
+    /// Writes `HD/` under `root` for `sprites`; returns each file's path, size and SHA-256.
+    static func writeHighResolution(_ archive: DIGArchive, sprites: [(Int, Int)], to root: URL) throws -> [(path: String, size: Int, sha256: String)] {
+        var written: [(path: String, size: Int, sha256: String)] = []
+        for (entry, subfile) in sprites {
+            let file = try SpriteFile(try subfileBytes(archive, entry, subfile))
+            for (n, texture) in file.textures.decode().enumerated() {
+                guard let texture else { continue }
+                let started = Date()
+                let upscaled = try TextureUpscaler.upscale(texture)
+                guard let png = HighResolution.png(upscaled) else { fail("PNG encoding failed") }
+                let path = HighResolution.path(entry: entry, subfile: subfile, texture: n)
+                let url = root.appending(path: path)
+                try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try png.write(to: url)
+                let digest = SHA256.hash(data: png).map { String(format: "%02x", $0) }.joined()
+                written.append((path, png.count, digest))
+                print(String(format: "%@\t%d×%d → %d×%d\t%d bytes\t%.2f s", path, texture.width, texture.height,
+                             upscaled.width, upscaled.height, png.count, Date().timeIntervalSince(started)))
+            }
+        }
+        return written
+    }
     static let files = ["SYSTEM.CNF", "CFC_UK.DIG", "XA/XA.AFS", "XA/XAVOICE.AFS"]
     static let movie = "MV/MV00.DSI"
 
@@ -124,6 +152,8 @@ struct Options {
     var size = SIMD2(1920, 1080)
     var frames = 0
     var backend = SpriteSnapshot.Backend.metal4
+    /// `--hd <data-root>`: use the high-resolution textures under `<data-root>/HD/`.
+    var highResolution: URL?
 
     init(_ arguments: ArraySlice<String>) {
         var rest = arguments.makeIterator()
@@ -131,6 +161,7 @@ struct Options {
             switch argument {
             case "--frames": frames = rest.next().flatMap(Int.init) ?? 0
             case "--backend": backend = rest.next().flatMap(SpriteSnapshot.Backend.init(rawValue:)) ?? .metal4
+            case "--hd": highResolution = rest.next().map { URL(fileURLWithPath: $0, isDirectory: true) }
             default:
                 let parts = argument.split(separator: "x").compactMap { Int($0) }
                 if parts.count == 2 { size = SIMD2(parts[0], parts[1]) }
@@ -166,6 +197,18 @@ func renderPNG(_ frame: SpriteFrame, size: SIMD2<Int>, backend: SpriteSnapshot.B
 }
 
 /// One sub-file of a DIG entry.
+/// A sprite file, with the high-resolution textures under `root` when given.
+func spriteFile(_ archive: DIGArchive, _ entry: Int, _ subfile: Int, highResolution root: URL?) throws -> SpriteFile {
+    var file = try SpriteFile(try subfileBytes(archive, entry, subfile))
+    guard let root else { return file }
+    for n in file.textures.textures.indices {
+        if let texture = HighResolution.decode(root.appending(path: HighResolution.path(entry: entry, subfile: subfile, texture: n))) {
+            file.highResolution[n] = texture
+        }
+    }
+    return file
+}
+
 func subfileBytes(_ archive: DIGArchive, _ entryIndex: Int, _ subfileIndex: Int) throws -> [UInt8] {
     guard archive.entries.indices.contains(entryIndex) else { fail("no entry \(entryIndex)") }
     let entry = archive.entries[entryIndex]
@@ -509,16 +552,16 @@ case ("screen", "render"):
     var screen: SpriteScreen
     switch name.first {
     case "title":
-        screen = TitleScreen.make(try SpriteFile(try subfileBytes(archive, TitleScreen.entry, TitleScreen.subfile)), phase: .pressStart)
+        screen = TitleScreen.make(try spriteFile(archive, TitleScreen.entry, TitleScreen.subfile, highResolution: options.highResolution), phase: .pressStart)
     case "menu":
         let selection = name.count > 1 ? Int(name[1]) ?? 0 : 0
-        screen = TitleScreen.make(try SpriteFile(try subfileBytes(archive, TitleScreen.entry, TitleScreen.subfile)), phase: .menu(selection: selection))
+        screen = TitleScreen.make(try spriteFile(archive, TitleScreen.entry, TitleScreen.subfile, highResolution: options.highResolution), phase: .menu(selection: selection))
     case "modes":
         // modes[:<selection>] — SELECT MODE after its intro frames.
         let selection = name.count > 1 ? Int(name[1]) ?? 0 : 0
-        var menu = ModeSelectMenu(file: try SpriteFile(try subfileBytes(archive, ModeSelectScreen.entry, ModeSelectScreen.subfile)),
+        var menu = ModeSelectMenu(file: try spriteFile(archive, ModeSelectScreen.entry, ModeSelectScreen.subfile, highResolution: options.highResolution),
                                   selection: selection)
-        for _ in 0 ..< max(8, Options(arguments.dropFirst(5)).frames) { menu.tick(InputState()) }
+        for _ in 0 ..< max(8, options.frames) { menu.tick(InputState()) }
         screen = menu.screen
     case "file":
         // file:<entry>/<sub-file>[:<hex animation>,…] — one layer per animation (default: animation 0).
@@ -558,6 +601,18 @@ case ("sprite", "anims"):
     }
     print("rendered \(file.bank.animations.count) animations")
 
+case ("hd", "sprites"):
+    // `uc-tool hd sprites <CFC.DIG> <data-root> [entry/sub-file…]`: (re)writes `<data-root>/HD/`.
+    guard arguments.count >= 4 else { fail("usage: uc-tool hd sprites <CFC.DIG> <data-root> [entry/sub-file…]") }
+    let archive = try DIGArchive(url: archiveURL)
+    let picked: [(Int, Int)] = arguments.dropFirst(4).compactMap { item in
+        let parts = item.split(separator: "/").compactMap { Int($0) }
+        return parts.count == 2 ? (parts[0], parts[1]) : nil
+    }
+    let written = try GamePack.writeHighResolution(archive, sprites: picked.isEmpty ? GamePack.highResolutionSprites : picked,
+                                                   to: URL(fileURLWithPath: arguments[3], isDirectory: true))
+    print("wrote \(written.count) textures, \(written.reduce(0) { $0 + $1.size }) bytes")
+
 case ("pack", _):
     // `uc-tool pack <disc.iso> <out-dir>`: arguments[1] is the disc, arguments[2] the output.
     let disc = try DiscImage(url: URL(fileURLWithPath: arguments[1]))
@@ -570,12 +625,17 @@ case ("pack", _):
         manifest.append(["path": path, "size": file.size, "sha256": digest])
         print("\(path)\t\(file.size)\t\(digest)")
     }
+    // 2D textures at 4× (Apple's super-resolution scaler; this Mac, package time only).
+    let digArchive = try DIGArchive(url: out.appending(path: "CFC_UK.DIG"))
+    for item in try GamePack.writeHighResolution(digArchive, sprites: GamePack.highResolutionSprites, to: out) {
+        manifest.append(["path": item.path, "size": item.size, "sha256": item.sha256])
+    }
     // The intro movie: converted once here (ffmpeg, package time only) to HEVC + AAC.
     let staging = FileManager.default.temporaryDirectory.appending(path: "nuc2-pack-\(UUID().uuidString)", directoryHint: .isDirectory)
     defer { try? FileManager.default.removeItem(at: staging) }
     let dsi = staging.appending(path: "MV00.DSI")
     _ = try GamePack.copy(try disc.file(GamePack.movie), to: dsi)
-    try movieConvert(dsi.path, to: out.appending(path: "MV", directoryHint: .isDirectory), MovieConversion(arguments: []))
+    try movieConvert(dsi.path, to: out.appending(path: "MV", directoryHint: .isDirectory), MovieConversion(arguments: ["--super-resolution", "--crf", "20", "--preset", "medium"]))
     let mp4 = out.appending(path: "MV/MV00.mp4")
     let size = (try FileManager.default.attributesOfItem(atPath: mp4.path)[.size] as? NSNumber)?.uint64Value ?? 0
     let digest = SHA256.hash(data: try Data(contentsOf: mp4, options: .mappedIfSafe)).map { String(format: "%02x", $0) }.joined()

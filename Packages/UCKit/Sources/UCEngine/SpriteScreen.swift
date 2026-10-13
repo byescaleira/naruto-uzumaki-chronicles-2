@@ -3,45 +3,79 @@ import simd
 import UCFormats
 import UCRender
 
-/// A 2D screen: sprite objects drawn from one or more sprite files, advanced once per game
-/// frame and turned into a renderer-agnostic ``SpriteFrame``.
-public struct SpriteScreen: Sendable {
+/// The textures of one or more sprite files, decoded (or swapped for their high-resolution
+/// copies) and packed into an atlas once. Build it off the main actor; screens share it.
+public final class SpriteSheet: Sendable {
     public let files: [SpriteFile]
-    /// Every texture of every file, uploaded once.
+    /// Every texture of every file.
     public let atlas: SpriteAtlas
-    /// Per file: the `TEX0` size of each texture, and its first layer in ``atlas``.
+    /// Per file: the `TEX0` size of each texture (texel coordinates are normalised by it), and
+    /// its first layer in ``atlas``.
     public let textureSizes: [[SIMD2<Int>]]
     public let textureBase: [UInt32]
-    public var objects: [SpriteObject] = []
-    public var clearColor: SIMD3<Float> = .zero
-    /// Screen fade (`FUN_001c4610` / `FUN_001c4650`): 1 = fully shown, 0 = black.
-    public var brightness: Float = 1
-    public private(set) var frameCount = 0
 
     public init(files: [SpriteFile]) {
         self.files = files
         var textures: [(width: Int, height: Int, rgba: [UInt8])] = []
         var sizes: [[SIMD2<Int>]] = []
         var bases: [UInt32] = []
+        var upscaled = false
+        var detail: [Float] = []
         for file in files {
             bases.append(UInt32(textures.count))
-            let decoded = file.textures.decode()
-            sizes.append(zip(file.textures.textures, decoded).map { texture, image in
-                SIMD2(image?.width ?? texture.tex0.width, image?.height ?? texture.tex0.height)
-            })
-            for (texture, image) in zip(file.textures.textures, decoded) {
-                if let image {
+            var fileSizes: [SIMD2<Int>] = []
+            // Decoding replays the whole texture upload; skip it when every texture is replaced.
+            let decoded = file.highResolution.count == file.textures.textures.count
+                ? [] : file.textures.decode()
+            for (n, texture) in file.textures.textures.enumerated() {
+                if let hd = file.highResolution[n] {
+                    // Same normalised coordinates: the copy is `scale` times the decoded size.
+                    fileSizes.append(SIMD2(hd.width / HighResolution.scale, hd.height / HighResolution.scale))
+                    textures.append((hd.width, hd.height, hd.rgba))
+                    detail.append(Float(HighResolution.scale))
+                    upscaled = true
+                } else if decoded.indices.contains(n), let image = decoded[n] {
+                    fileSizes.append(SIMD2(image.width, image.height))
                     textures.append((image.width, image.height, image.rgba))
+                    detail.append(1)
                 } else {
                     // Unsupported format: keep the slot so indices stay aligned.
-                    textures.append((texture.tex0.width, texture.tex0.height, [UInt8](repeating: 0, count: texture.tex0.width * texture.tex0.height * 4)))
+                    let w = texture.tex0.width, h = texture.tex0.height
+                    fileSizes.append(SIMD2(w, h))
+                    textures.append((w, h, [UInt8](repeating: 0, count: w * h * 4)))
+                    detail.append(1)
                 }
             }
+            sizes.append(fileSizes)
         }
-        atlas = SpriteAtlas(textures: textures)
+        atlas = SpriteAtlas(textures: textures, mipmapped: upscaled, detail: detail)
         textureSizes = sizes
         textureBase = bases
     }
+}
+
+/// A 2D screen: sprite objects drawn from one or more sprite files, advanced once per game
+/// frame and turned into a renderer-agnostic ``SpriteFrame``.
+public struct SpriteScreen: Sendable {
+    public let sheet: SpriteSheet
+    public var objects: [SpriteObject] = []
+    public var clearColor: SIMD3<Float> = .zero
+    /// Screen fade (`FUN_001c4610` / `FUN_001c4650`): 1 = fully shown, 0 = black.
+    public var brightness: Float = 1
+    public private(set) var frameCount = 0
+
+    public init(sheet: SpriteSheet) {
+        self.sheet = sheet
+    }
+
+    public init(files: [SpriteFile]) {
+        self.init(sheet: SpriteSheet(files: files))
+    }
+
+    public var files: [SpriteFile] { sheet.files }
+    public var atlas: SpriteAtlas { sheet.atlas }
+    public var textureSizes: [[SIMD2<Int>]] { sheet.textureSizes }
+    public var textureBase: [UInt32] { sheet.textureBase }
 
     /// One game frame.
     public mutating func tick() {
@@ -105,7 +139,12 @@ public enum TitleScreen {
     }
 
     public static func make(_ file: SpriteFile, phase: Phase = .menu(selection: 0)) -> SpriteScreen {
-        var screen = SpriteScreen(files: [file])
+        make(SpriteSheet(files: [file]), phase: phase)
+    }
+
+    public static func make(_ sheet: SpriteSheet, phase: Phase = .menu(selection: 0)) -> SpriteScreen {
+        let file = sheet.files[0]
+        var screen = SpriteScreen(sheet: sheet)
         var background = SpriteObject()
         for (id, animation) in backgroundAnimations.enumerated() {
             background.add(id: id, animation: animation, bank: file.bank)
@@ -155,16 +194,20 @@ public struct TitleMenu: Sendable {
 
     public private(set) var phase: TitleScreen.Phase
     public private(set) var screen: SpriteScreen
-    private let file: SpriteFile
+    private let sheet: SpriteSheet
     private var previous = InputState()
 
     /// `FUN_001aac40` opens the menu on LOAD GAME (`+8 = 1`).
     public static let initialSelection = 1
 
-    public init(file: SpriteFile, phase: TitleScreen.Phase = .pressStart) {
-        self.file = file
+    public init(sheet: SpriteSheet, phase: TitleScreen.Phase = .pressStart) {
+        self.sheet = sheet
         self.phase = phase
-        screen = TitleScreen.make(file, phase: phase)
+        screen = TitleScreen.make(sheet, phase: phase)
+    }
+
+    public init(file: SpriteFile, phase: TitleScreen.Phase = .pressStart) {
+        self.init(sheet: SpriteSheet(files: [file]), phase: phase)
     }
 
     /// The item the player confirmed (Cross / Start, or a second tap on the selected item).
@@ -239,7 +282,7 @@ public struct TitleMenu: Sendable {
     }
 
     private mutating func rebuild() {
-        var next = TitleScreen.make(file, phase: phase)
+        var next = TitleScreen.make(sheet, phase: phase)
         next.objects[0] = screen.objects[0]
         next.brightness = screen.brightness
         screen = next
@@ -298,6 +341,18 @@ extension GameData {
 
     /// The title / main-menu sprite file (DIG entry 40, sub-file 0).
     public func titleSprites() throws -> SpriteFile {
-        try SpriteFile(try subfile(entry: TitleScreen.entry, TitleScreen.subfile))
+        try sprites(entry: TitleScreen.entry, TitleScreen.subfile)
+    }
+
+    /// A sprite file, with the package's high-resolution textures for it (``HighResolution``).
+    public func sprites(entry: Int, _ subfile: Int) throws -> SpriteFile {
+        var file = try SpriteFile(try self.subfile(entry: entry, subfile))
+        for n in file.textures.textures.indices {
+            let path = HighResolution.path(entry: entry, subfile: subfile, texture: n)
+            if let url = disc.files[path.uppercased()]?.url, let texture = HighResolution.decode(url) {
+                file.highResolution[n] = texture
+            }
+        }
+        return file
     }
 }

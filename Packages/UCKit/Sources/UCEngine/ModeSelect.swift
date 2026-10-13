@@ -130,9 +130,14 @@ public struct ModeSelectMenu: Sendable {
     private var voiced = false
 
     public init(file: SpriteFile, party: [Int] = ModeSelectScreen.startingParty, selection: Int = 0) {
+        self.init(sheet: SpriteSheet(files: [file]), party: party, selection: selection)
+    }
+
+    public init(sheet: SpriteSheet, party: [Int] = ModeSelectScreen.startingParty, selection: Int = 0) {
+        let file = sheet.files[0]
         self.selection = selection
         centre = ModeSelectScreen.wheelCentre(file.bank)
-        var screen = SpriteScreen(files: [file])
+        var screen = SpriteScreen(sheet: sheet)
         screen.objects.append(ModeSelectScreen.makeBackdrop(file, party: party))
         for item in ModeSelectScreen.items {
             let label = item.unlocked ? item.label : ModeSelectScreen.lockedLabel
@@ -286,6 +291,6 @@ public struct ModeSelectMenu: Sendable {
 extension GameData {
     /// The SELECT MODE sprite file (DIG entry 40, sub-file 1).
     public func modeSelectSprites() throws -> SpriteFile {
-        try SpriteFile(try subfile(entry: ModeSelectScreen.entry, ModeSelectScreen.subfile))
+        try sprites(entry: ModeSelectScreen.entry, ModeSelectScreen.subfile)
     }
 }

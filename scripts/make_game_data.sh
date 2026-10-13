@@ -3,14 +3,20 @@
 # private data repository. Writes GameData.lock (version + checksum, safe to commit).
 #
 #   scripts/make_game_data.sh "<path>/Naruto - Uzumaki Chronicles 2 (Europe).iso"
+#   scripts/make_game_data.sh --archive-only   # re-archive an existing GameData/ (no re-pack)
+#
+# Packing runs Apple's super-resolution scaler (VideoToolbox, Apple silicon, macOS 26; the
+# models download once): about 35 minutes for the intro movie on an M-series Mac.
 set -eu
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-ISO=${1:?usage: make_game_data.sh <disc.iso>}
+ISO=${1:?usage: make_game_data.sh <disc.iso> | --archive-only}
 
-swift build --package-path "$ROOT/Packages/UCKit" -c release --product uc-tool
-TOOL="$ROOT/Packages/UCKit/.build/release/uc-tool"
-rm -rf "$ROOT/GameData"
-"$TOOL" pack "$ISO" "$ROOT/GameData"
+if [ "$ISO" != "--archive-only" ]; then
+    swift build --package-path "$ROOT/Packages/UCKit" -c release --product uc-tool
+    TOOL="$ROOT/Packages/UCKit/.build/release/uc-tool"
+    rm -rf "$ROOT/GameData"
+    "$TOOL" pack "$ISO" "$ROOT/GameData"
+fi
 
 FORMAT=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["format"])' "$ROOT/GameData/manifest.json")
 ASSET="GameData-v$FORMAT.tar"

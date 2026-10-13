@@ -11,6 +11,9 @@
 public struct SpriteFile: Sendable {
     public let bank: SpriteBank
     public let textures: SpriteTextureSet
+    /// Upscaled copies of some textures (``HighResolution``), by texture index; used instead of
+    /// the decoded texture when present.
+    public var highResolution: [Int: DecodedTexture] = [:]
 
     public enum Failure: Error, Equatable {
         case notASpriteFile

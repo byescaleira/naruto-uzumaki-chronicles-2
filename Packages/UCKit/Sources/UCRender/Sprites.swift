@@ -50,14 +50,26 @@ public final class SpriteAtlas: Sendable {
     public let height: Int
     /// One straight-alpha RGBA8 image of `width × height` per layer.
     public let layers: [[UInt8]]
-    /// Each source texture's size, for normalising texel coordinates.
+    /// Each texture's size in pixels (its top-left corner of the padded layer).
     public let sizes: [SIMD2<Int>]
+    /// Upload with a mipmap chain (generated on the GPU): set for high-resolution textures,
+    /// which are drawn smaller than their pixels on most screens. The game's own 2D textures are
+    /// magnified only. Their transparent texels carry their neighbours' colour (see `uc-tool`'s
+    /// texture upscaler), so straight-alpha filtering does not darken the cut-out edges.
+    public let mipmapped: Bool
 
-    /// Pads every texture to the largest size (texture coordinates stay in each texture's own space).
-    public init(textures: [(width: Int, height: Int, rgba: [UInt8])]) {
+    /// Pads every texture to the largest size; ``uvScale(_:)`` maps each texture's own
+    /// normalised coordinates into its corner of the layer.
+    /// Per layer, pixels per texel of the game's texture (``HighResolution/scale`` for the
+    /// upscaled copies, 1 otherwise).
+    public let detail: [Float]
+
+    public init(textures: [(width: Int, height: Int, rgba: [UInt8])], mipmapped: Bool = false, detail: [Float] = []) {
         let w = max(1, textures.map(\.width).max() ?? 1), h = max(1, textures.map(\.height).max() ?? 1)
         width = w
         height = h
+        self.mipmapped = mipmapped
+        self.detail = detail
         sizes = textures.map { SIMD2($0.width, $0.height) }
         layers = textures.map { texture in
             if texture.width == w, texture.height == h { return texture.rgba }
@@ -69,6 +81,24 @@ public final class SpriteAtlas: Sendable {
             return padded
         }
     }
+
+    /// Texture `layer`'s share of the padded layer, multiplied into its texture coordinates.
+    public func uvScale(_ layer: Int) -> SIMD2<Float> {
+        guard sizes.indices.contains(layer) else { return SIMD2(1, 1) }
+        return SIMD2(Float(sizes[layer].x) / Float(width), Float(sizes[layer].y) / Float(height))
+    }
+
+    /// REGION_CLAMP keeps samples half a game texel inside the region; on an upscaled layer
+    /// that is `detail` pixels, so widen it back to half a pixel (in the texture's own
+    /// normalised space), or neighbouring tiles of one picture would meet with a visible seam.
+    public func clampWidening(_ layer: Int) -> SIMD2<Float> {
+        guard detail.indices.contains(layer), detail[layer] > 1, sizes.indices.contains(layer) else { return .zero }
+        let pixels = SIMD2<Float>(Float(sizes[layer].x), Float(sizes[layer].y))
+        return 0.5 * (detail[layer] - 1) / pixels
+    }
+
+    /// Number of mip levels uploaded.
+    public var levelCount: Int { mipmapped ? Int(log2(Double(max(width, height)))) + 1 : 1 }
 }
 
 /// What the 2D layer draws this frame.
@@ -134,10 +164,12 @@ struct SpriteInstance {
     var layer: UInt32
     var padding: SIMD3<UInt32> = .zero
 
-    init(_ quad: SpriteQuad) {
+    init(_ quad: SpriteQuad, uvScale: SIMD2<Float> = SIMD2(1, 1), clampWidening: SIMD2<Float> = .zero) {
         p0 = quad.corners.0; p1 = quad.corners.1; p2 = quad.corners.2; p3 = quad.corners.3
-        uv = quad.uv
-        clamp = quad.clamp
+        let scale = SIMD4(uvScale.x, uvScale.y, uvScale.x, uvScale.y)
+        let widen = SIMD4(-clampWidening.x, -clampWidening.y, clampWidening.x, clampWidening.y)
+        uv = quad.uv * scale
+        clamp = simd_clamp(quad.clamp + widen, .zero, SIMD4(repeating: 1)) * scale
         // MODULATE happens on display-referred values; scale the colour in that space, then
         // linearise the factor so a neutral 0x80 vertex leaves the texel untouched.
         let rgb = SIMD3(quad.color.x, quad.color.y, quad.color.z)

@@ -26,8 +26,21 @@ if [ -d "$SUB/.git" ] || [ -f "$SUB/.git" ]; then
     mkdir -p "$SUB/package"
     split -b 90m -a 2 "$ROOT/.build/$NUC2_DATA_ASSET" "$SUB/package/$NUC2_DATA_ASSET.part-"
     printf 'NUC2_DATA_TAG=%s\nNUC2_DATA_ASSET=%s\nNUC2_DATA_SHA256=%s\n' "$NUC2_DATA_TAG" "$NUC2_DATA_ASSET" "$NUC2_DATA_SHA256" > "$SUB/package/PACKAGE"
+    push() { git -C "$SUB" -c http.postBuffer=524288000 -c credential.helper= -c 'credential.helper=!gh auth git-credential' push -q origin HEAD:main; }
+    # A few parts per commit and push: one 1 GB+ push times out (HTTP 408) on GitHub.
+    # Parts that no longer exist are dropped in the first commit; the rest are added in batches.
+    git -C "$SUB" ls-files --deleted package | while read -r gone; do git -C "$SUB" rm -q --cached "$gone"; done
+    set -- "$SUB"/package/"$NUC2_DATA_ASSET".part-*
+    while [ $# -gt 0 ]; do
+        batch=""
+        for _ in 1 2 3; do [ $# -gt 0 ] && { batch="$batch $1"; shift; }; done
+        # shellcheck disable=SC2086
+        git -C "$SUB" add $batch
+        git -C "$SUB" commit -q -m "Game data package $NUC2_DATA_TAG: parts$(for f in $batch; do printf ' %s' "${f##*.part-}"; done)"
+        push
+    done
     git -C "$SUB" add -A package
     git -C "$SUB" commit -q -m "Game data package $NUC2_DATA_TAG in 90 MB parts"
-    git -C "$SUB" -c credential.helper= -c 'credential.helper=!gh auth git-credential' push -q origin HEAD:main
+    push
     echo "updated the GameDataPackage submodule; commit the new submodule pointer in this repository"
 fi

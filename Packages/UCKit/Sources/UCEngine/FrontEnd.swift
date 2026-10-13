@@ -39,8 +39,8 @@ public struct FrontEnd: Sendable {
     }
 
     public private(set) var stage: Stage
-    private let titleFile: SpriteFile
-    private let modeFile: SpriteFile
+    private let titleSheet: SpriteSheet
+    private let modeSheet: SpriteSheet
 
     /// `FUN_001c4610(15, …)` / `FUN_001c4650(15)`.
     public static let fadeFrames = 15
@@ -53,12 +53,17 @@ public struct FrontEnd: Sendable {
     private var announcerIn: Int?
     private var events: [FrontEndEvent] = []
 
-    /// Starts on the title's PRESS START, fading in with bg093.
-    public init(title: SpriteFile, modeSelect: SpriteFile) {
-        titleFile = title
-        modeFile = modeSelect
-        stage = .title(TitleMenu(file: title))
+    /// Starts on the title's PRESS START, fading in with bg093. Build the sheets off the main
+    /// actor: they decode every texture.
+    public init(title: SpriteSheet, modeSelect: SpriteSheet) {
+        titleSheet = title
+        modeSheet = modeSelect
+        stage = .title(TitleMenu(sheet: title))
         enterTitle()
+    }
+
+    public init(title: SpriteFile, modeSelect: SpriteFile) {
+        self.init(title: SpriteSheet(files: [title]), modeSelect: SpriteSheet(files: [modeSelect]))
     }
 
     public var screen: SpriteScreen {
@@ -150,10 +155,10 @@ public struct FrontEnd: Sendable {
         destination = nil
         switch next {
         case .title:
-            stage = .title(TitleMenu(file: titleFile))
+            stage = .title(TitleMenu(sheet: titleSheet))
             enterTitle()
         case .modeSelect:
-            stage = .modeSelect(ModeSelectMenu(file: modeFile, party: ModeSelectScreen.startingParty.shuffled()))
+            stage = .modeSelect(ModeSelectMenu(sheet: modeSheet, party: ModeSelectScreen.startingParty.shuffled()))
             events.append(.music(ModeSelectScreen.music, fadeInFrames: 0))
             fadeIn()
         }

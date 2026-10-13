@@ -34,6 +34,8 @@ final class SpriteAtlasCache {
     var onInsert: ((any MTLTexture) -> Void)?
     var onEvict: ((any MTLTexture) -> Void)?
 
+    private var queue: (any MTLCommandQueue)?
+
     init(device: any MTLDevice) { self.device = device }
 
     func texture(for atlas: SpriteAtlas) -> (any MTLTexture)? {
@@ -48,6 +50,7 @@ final class SpriteAtlasCache {
         descriptor.width = atlas.width
         descriptor.height = atlas.height
         descriptor.arrayLength = max(1, atlas.layers.count)
+        descriptor.mipmapLevelCount = atlas.levelCount
         descriptor.usage = .shaderRead
         descriptor.storageMode = .shared
         guard let texture = device.makeTexture(descriptor: descriptor) else { return nil }
@@ -56,6 +59,16 @@ final class SpriteAtlasCache {
             pixels.withUnsafeBytes { raw in
                 texture.replace(region: MTLRegionMake2D(0, 0, atlas.width, atlas.height), mipmapLevel: 0, slice: slice,
                                 withBytes: raw.baseAddress!, bytesPerRow: atlas.width * 4, bytesPerImage: atlas.width * atlas.height * 4)
+            }
+        }
+        if atlas.levelCount > 1 {
+            // Once per atlas: a blit on its own classic queue (sRGB levels filter in linear light).
+            if queue == nil { queue = device.makeCommandQueue() }
+            if let commands = queue?.makeCommandBuffer(), let blit = commands.makeBlitCommandEncoder() {
+                blit.generateMipmaps(for: texture)
+                blit.endEncoding()
+                commands.commit()
+                commands.waitUntilCompleted()
             }
         }
         if entries.count >= capacity {
@@ -94,7 +107,10 @@ final class SpriteInstanceRing {
         var uniforms = frame.canvas.transform(width: width, height: height)
         buffer.contents().copyMemory(from: &uniforms, byteCount: MemoryLayout<SpriteUniforms>.stride)
         let instances = buffer.contents().advanced(by: SpriteShader.instanceOffset).bindMemory(to: SpriteInstance.self, capacity: frame.quads.count)
-        for (i, quad) in frame.quads.enumerated() { instances[i] = SpriteInstance(quad) }
+        for (i, quad) in frame.quads.enumerated() {
+            let layer = Int(quad.texture)
+            instances[i] = SpriteInstance(quad, uvScale: frame.atlas.uvScale(layer), clampWidening: frame.atlas.clampWidening(layer))
+        }
         return buffer
     }
 }

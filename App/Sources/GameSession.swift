@@ -116,15 +116,16 @@ final class GameSession: GameAudio {
 
     /// Everything the menus need, decoded off the main actor.
     private struct Assets: Sendable {
-        let title: SpriteFile
-        let modeSelect: SpriteFile
+        /// Decoded (and swapped for the high-resolution copies) here, off the main actor.
+        let title: SpriteSheet
+        let modeSelect: SpriteSheet
         let table: SoundTable?
         let musicArchive: AFSArchive?
         let voiceArchive: AFSArchive?
 
         init(_ data: GameData) throws {
-            title = try data.titleSprites()
-            modeSelect = try data.modeSelectSprites()
+            title = SpriteSheet(files: [try data.titleSprites()])
+            modeSelect = SpriteSheet(files: [try data.modeSelectSprites()])
             table = try? SoundTable(try data.subfile(entry: SoundTable.entry, SoundTable.subfile))
             musicArchive = try data.disc.files["XA/XA.AFS"].map { try AFSArchive(url: $0.url) }
             voiceArchive = try data.disc.files["XA/XAVOICE.AFS"].map { try AFSArchive(url: $0.url) }
