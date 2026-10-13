@@ -31,7 +31,10 @@ let package = Package(
         .target(
             name: "UCEngine",
             dependencies: ["UCFormats", "UCRender"],
-            swiftSettings: [.enableUpcomingFeature("ExistentialAny")]
+            swiftSettings: [.enableUpcomingFeature("ExistentialAny")],
+            // `UIWindow.avDisplayManager` is an AVKit category: without the framework linked the
+            // selector doesn't exist at run time on tvOS.
+            linkerSettings: [.linkedFramework("AVKit", .when(platforms: [.tvOS]))]
         ),
         // Streamed ADX playback (AVAudioEngine): music and voice buses, seamless loops.
         .target(

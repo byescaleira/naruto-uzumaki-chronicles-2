@@ -36,6 +36,8 @@ enum DisplayMode {
             formatDescriptionOut: &format
         )
         guard status == noErr, let format else { return }
+        // Never crash over a display-mode hint: without AVKit loaded the category is missing.
+        guard window.responds(to: #selector(getter: UIWindow.avDisplayManager)) else { return }
         window.avDisplayManager.preferredDisplayCriteria = AVDisplayCriteria(refreshRate: 60, formatDescription: format)
     }
 }
