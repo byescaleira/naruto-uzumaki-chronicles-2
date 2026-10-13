@@ -14,6 +14,8 @@ public struct SpriteScreen: Sendable {
     public let textureBase: [UInt32]
     public var objects: [SpriteObject] = []
     public var clearColor: SIMD3<Float> = .zero
+    /// Screen fade (`FUN_001c4610` / `FUN_001c4650`): 1 = fully shown, 0 = black.
+    public var brightness: Float = 1
     public private(set) var frameCount = 0
 
     public init(files: [SpriteFile]) {
@@ -59,7 +61,12 @@ public struct SpriteScreen: Sendable {
     }
 
     public func frame(canvas: SpriteCanvas = SpriteCanvas()) -> SpriteFrame {
-        SpriteFrame(atlas: atlas, quads: quads, canvas: canvas, clearColor: clearColor)
+        var quads = quads
+        if brightness < 1 {
+            let level = max(0, brightness)
+            for i in quads.indices { quads[i].color *= SIMD4(level, level, level, 1) }
+        }
+        return SpriteFrame(atlas: atlas, quads: quads, canvas: canvas, clearColor: clearColor * max(0, brightness))
     }
 }
 
@@ -84,6 +91,11 @@ public enum TitleScreen {
     public static let itemSpacing = 0x28
     /// "PRESS START BUTTON" (`FUN_001aa3e0` plays animation 0x1B of the same file).
     public static let pressStart = 0x1B
+    /// bg093: `FUN_001aaed0` calls `FUN_00129c60(0, 0x5d, 1, 0, 0)` (channel 0 = music).
+    public static let music = 0x5D
+    /// Announcer lines (voice indices) from the table at `0x352490`, picked at random by
+    /// `FUN_001aae30`.
+    public static let announcerVoices = [0x709, 0x731, 0x732, 0x733, 0x734, 0x735, 0x736, 0x737, 0x738, 0x739, 0x73A, 0x73B]
 
     public enum Phase: Sendable, Equatable {
         /// The backdrop with the blinking "PRESS START BUTTON".
@@ -134,13 +146,20 @@ public enum TitleScreen {
     }
 }
 
-/// The title flow driven by the pad: PRESS START → menu, up / down to move the selection.
-/// What each item leads to (story, load, options) is not reimplemented yet.
+/// The title flow driven by the pad (`FUN_001aad00`, `FUN_001aaa90`): PRESS START → menu,
+/// up / down to move the selection, Cross to confirm, Triangle back to PRESS START.
 public struct TitleMenu: Sendable {
+    public enum Item: Int, Sendable, CaseIterable {
+        case newGame, loadGame, option
+    }
+
     public private(set) var phase: TitleScreen.Phase
     public private(set) var screen: SpriteScreen
     private let file: SpriteFile
     private var previous = InputState()
+
+    /// `FUN_001aac40` opens the menu on LOAD GAME (`+8 = 1`).
+    public static let initialSelection = 1
 
     public init(file: SpriteFile, phase: TitleScreen.Phase = .pressStart) {
         self.file = file
@@ -148,11 +167,11 @@ public struct TitleMenu: Sendable {
         screen = TitleScreen.make(file, phase: phase)
     }
 
-    /// One game frame with this frame's pad state.
     /// The item the player confirmed (Cross / Start, or a second tap on the selected item).
-    /// What each item starts is not reimplemented yet; the flow reads and clears this.
-    public var confirmed: Int?
+    /// The flow (``FrontEnd``) reads and clears it.
+    public var confirmed: Item?
 
+    /// One game frame with this frame's pad state.
     public mutating func tick(_ input: InputState) {
         defer { previous = input }
         let pressed = input.buttons.subtracting(previous.buttons)
@@ -163,10 +182,12 @@ public struct TitleMenu: Sendable {
             let down = input.leftStick.y < -0.5 && previous.leftStick.y >= -0.5
             let up = input.leftStick.y > 0.5 && previous.leftStick.y <= 0.5
             let count = TitleScreen.itemLabels.count
-            if up || down {
-                select((selection + (down ? 1 : count - 1)) % count)
+            if pressed.contains(.triangle) {
+                closeMenu()
             } else if !pressed.isDisjoint(with: [.start, .cross]) {
-                confirmed = selection
+                confirmed = Item(rawValue: selection)
+            } else if up || down {
+                select((selection + (down ? 1 : count - 1)) % count)
             }
         }
         screen.tick()
@@ -180,11 +201,9 @@ public struct TitleMenu: Sendable {
         case .pressStart:
             openMenu()
         case .menu(let selection):
-            guard let index = itemFrames.firstIndex(where: { frame in
-                point.x >= frame.x && point.x <= frame.z && point.y >= frame.y && point.y <= frame.w
-            }) else { return }
+            guard let index = itemFrames.firstIndex(where: { $0.contains(point) }) else { return }
             if index == selection {
-                confirmed = index
+                confirmed = Item(rawValue: index)
             } else {
                 select(index)
             }
@@ -196,17 +215,8 @@ public struct TitleMenu: Sendable {
     /// vertically so neighbouring rows don't leave dead gaps.
     public var itemFrames: [SIMD4<Float>] {
         guard case .menu = phase else { return [] }
-        let rows = (0 ..< TitleScreen.itemLabels.count).map { index -> SIMD4<Float>? in
-            var quads: [SpriteQuad] = []
-            screen.objects[1 + index].draw(textureSizes: screen.textureSizes, into: &quads, textureBase: screen.textureBase)
-            var lower = SIMD2<Float>(repeating: .infinity), upper = SIMD2<Float>(repeating: -.infinity)
-            for quad in quads {
-                for corner in [quad.corners.0, quad.corners.1, quad.corners.2, quad.corners.3] {
-                    lower = simd_min(lower, corner)
-                    upper = simd_max(upper, corner)
-                }
-            }
-            return lower.x.isFinite ? SIMD4(lower.x, lower.y, upper.x, upper.y) : nil
+        let rows = (0 ..< TitleScreen.itemLabels.count).map { index in
+            screen.objects[1 + index].drawnBounds(in: screen)
         }
         let half = Float(TitleScreen.itemSpacing) / 2
         let minX = rows.compactMap { $0?.x }.min() ?? 0, maxX = rows.compactMap { $0?.z }.max() ?? 0
@@ -219,10 +229,20 @@ public struct TitleMenu: Sendable {
 
     private mutating func openMenu() {
         // The backdrop keeps running: only the overlay objects change.
-        phase = .menu(selection: 0)
-        var menu = TitleScreen.make(file, phase: phase)
-        menu.objects[0] = screen.objects[0]
-        screen = menu
+        phase = .menu(selection: Self.initialSelection)
+        rebuild()
+    }
+
+    private mutating func closeMenu() {
+        phase = .pressStart
+        rebuild()
+    }
+
+    private mutating func rebuild() {
+        var next = TitleScreen.make(file, phase: phase)
+        next.objects[0] = screen.objects[0]
+        next.brightness = screen.brightness
+        screen = next
     }
 
     private mutating func select(_ next: Int) {
@@ -230,6 +250,32 @@ public struct TitleMenu: Sendable {
         TitleScreen.setSelected(&screen.objects[1 + selection], false)
         TitleScreen.setSelected(&screen.objects[1 + next], true)
         phase = .menu(selection: next)
+    }
+
+    /// Fade level of the whole screen (``FrontEnd`` drives it).
+    public mutating func setBrightness(_ level: Float) { screen.brightness = level }
+}
+
+extension SIMD4 where Scalar == Float {
+    /// For `(minX, minY, maxX, maxY)` rects.
+    func contains(_ point: SIMD2<Float>) -> Bool {
+        point.x >= x && point.x <= z && point.y >= y && point.y <= w
+    }
+}
+
+extension SpriteObject {
+    /// `(minX, minY, maxX, maxY)` of the quads the object draws now, or `nil` when it draws none.
+    func drawnBounds(in screen: SpriteScreen) -> SIMD4<Float>? {
+        var quads: [SpriteQuad] = []
+        draw(textureSizes: screen.textureSizes, into: &quads, textureBase: screen.textureBase)
+        var lower = SIMD2<Float>(repeating: .infinity), upper = SIMD2<Float>(repeating: -.infinity)
+        for quad in quads where quad.color.w > 0 {
+            for corner in [quad.corners.0, quad.corners.1, quad.corners.2, quad.corners.3] {
+                lower = simd_min(lower, corner)
+                upper = simd_max(upper, corner)
+            }
+        }
+        return lower.x.isFinite ? SIMD4(lower.x, lower.y, upper.x, upper.y) : nil
     }
 }
 

@@ -7,11 +7,11 @@ import UCFormats
 import os
 #endif
 
-/// Drives the boot flow the original runs: intro movie, then the title screen
-/// (`FUN_001aaed0`: music bg093 with a fade-in, the 21-layer title, the voice announcer task).
+/// Drives the boot flow the original runs: intro movie, then the menus (``FrontEnd``: title,
+/// SELECT MODE), playing the music and voices they ask for.
 @MainActor
 @Observable
-final class GameSession {
+final class GameSession: GameAudio {
     enum Stage {
         case intro(MoviePlayer)
         case title
@@ -22,12 +22,6 @@ final class GameSession {
     @ObservationIgnored private let audio = AudioSystem()
     @ObservationIgnored private var started = false
 
-    /// Title music: `FUN_001aaed0` calls `FUN_00129c60(0, 0x5d, 1, 0, 0)` (channel 0 = music).
-    nonisolated static let titleMusic = 0x5D
-    /// Title announcer lines (voice indices) from the table at `0x352490`, picked at random by
-    /// the task `FUN_001aae30`.
-    nonisolated static let announcerVoices = [0x709, 0x731, 0x732, 0x733, 0x734, 0x735, 0x736, 0x737, 0x738, 0x739, 0x73A, 0x73B]
-
     init(runtime: GameRuntime) {
         self.runtime = runtime
     }
@@ -36,10 +30,19 @@ final class GameSession {
         guard !started else { return }
         started = true
         try? audio.start()
+        #if DEBUG
+        // `NUC2_MUTE=1`: silent test runs (simulators, automation).
+        if ProcessInfo.processInfo.environment["NUC2_MUTE"] == "1" {
+            for bus in AudioSystem.Bus.allCases { audio.setVolume(0, for: bus) }
+        }
+        #endif
         let assets = try? await Task.detached(priority: .userInitiated) { try Assets(data) }.value
 
         if let movie = data.disc.files["MV/MV00.MP4"]?.url {
             let player = MoviePlayer(url: movie)
+            #if DEBUG
+            player.isMuted = ProcessInfo.processInfo.environment["NUC2_MUTE"] == "1"
+            #endif
             stage = .intro(player)
             let skip = Task { [runtime] in
                 // Controllers and the keyboard skip too (the view handles taps and clicks).
@@ -55,25 +58,11 @@ final class GameSession {
             stage = .title
             return
         }
-        enterTitle(assets)
-    }
-
-    private func enterTitle(_ assets: Assets) {
-        runtime.title = TitleMenu(file: assets.title)
+        self.assets = assets
+        runtime.audio = self
+        runtime.frontEnd = FrontEnd(title: assets.title, modeSelect: assets.modeSelect)
         stage = .title
-        if let music = assets.music {
-            audio.play(music, on: .music, loops: true, gain: assets.musicGain, fadeIn: .seconds(1))
-        }
         Task { [audio] in
-            try? await Task.sleep(for: .seconds(1.5))
-            if let voice = assets.announcer {
-                audio.play(voice.track, on: .voice, loops: false, gain: voice.gain)
-            }
-            #if DEBUG
-            try? await Task.sleep(for: .milliseconds(300))
-            Logger(subsystem: "com.byescaleira.nuc2", category: "audio").info(
-                "title audio: music \(audio.isPlaying(.music)), voice \(audio.isPlaying(.voice)), engine \(audio.isRunning)")
-            #endif
             // Retired streams are freed on the main actor.
             while true {
                 try? await Task.sleep(for: .seconds(1))
@@ -82,28 +71,81 @@ final class GameSession {
         }
     }
 
-    /// Everything the title needs, decoded off the main actor.
+    // MARK: Audio
+
+    @ObservationIgnored private var assets: Assets?
+    /// Bumped on every music change so a slow load never starts a stale track.
+    @ObservationIgnored private var musicRequest = 0
+    @ObservationIgnored private var voiceLoading = false
+
+    var isVoiceIdle: Bool { !voiceLoading && !audio.isPlaying(.voice) }
+
+    func handle(_ event: FrontEndEvent) {
+        guard let assets else { return }
+        switch event {
+        case .music(let index, let fadeInFrames):
+            musicRequest += 1
+            let request = musicRequest
+            let gain = assets.gain(music: index)
+            Task {
+                guard let track = await assets.load(music: index), request == musicRequest else { return }
+                audio.play(track, on: .music, loops: true, gain: gain, fadeIn: .seconds(Double(fadeInFrames) / 60))
+            }
+        case .fadeOutAudio(let frames):
+            musicRequest += 1
+            let fade = Duration.seconds(Double(frames) / 60)
+            audio.stop(.music, fadeOut: fade)
+            audio.stop(.voice, fadeOut: fade)
+        case .voice(let index):
+            voiceLoading = true
+            let gain = assets.gain(voice: index)
+            Task {
+                defer { voiceLoading = false }
+                guard let track = await assets.load(voice: index) else { return }
+                audio.play(track, on: .voice, loops: false, gain: gain)
+                #if DEBUG
+                Logger(subsystem: "com.byescaleira.nuc2", category: "audio").info(
+                    "voice \(String(index, radix: 16), privacy: .public): playing \(self.audio.isPlaying(.voice)), engine \(self.audio.isRunning)")
+                #endif
+            }
+        case .sound:
+            // The SE banks (`FUN_0012b300`) are not decoded yet.
+            break
+        }
+    }
+
+    /// Everything the menus need, decoded off the main actor.
     private struct Assets: Sendable {
         let title: SpriteFile
-        let music: ADXTrack?
-        let musicGain: Float
-        let announcer: (track: ADXTrack, gain: Float)?
+        let modeSelect: SpriteFile
+        let table: SoundTable?
+        let musicArchive: AFSArchive?
+        let voiceArchive: AFSArchive?
 
         init(_ data: GameData) throws {
             title = try data.titleSprites()
-            let table = try? SoundTable(try data.subfile(entry: SoundTable.entry, SoundTable.subfile))
-            func gain(_ stream: SoundTable.Stream?) -> Float {
-                stream.map { CRIVolume.gain(level: CRIVolume.level(streamVolume: $0.volume)) } ?? 1
-            }
-            let musicArchive = try data.disc.files["XA/XA.AFS"].map { try AFSArchive(url: $0.url) }
-            let voiceArchive = try data.disc.files["XA/XAVOICE.AFS"].map { try AFSArchive(url: $0.url) }
-            music = try musicArchive.map { try ADXTrack(archive: $0, index: GameSession.titleMusic) }
-            musicGain = gain(table?.music.first { $0.index == GameSession.titleMusic })
-            if let voiceArchive, let index = GameSession.announcerVoices.randomElement() {
-                announcer = (try ADXTrack(archive: voiceArchive, index: index), gain(table?.voices.first { $0.index == index }))
-            } else {
-                announcer = nil
-            }
+            modeSelect = try data.modeSelectSprites()
+            table = try? SoundTable(try data.subfile(entry: SoundTable.entry, SoundTable.subfile))
+            musicArchive = try data.disc.files["XA/XA.AFS"].map { try AFSArchive(url: $0.url) }
+            voiceArchive = try data.disc.files["XA/XAVOICE.AFS"].map { try AFSArchive(url: $0.url) }
+        }
+
+        private static func gain(_ stream: SoundTable.Stream?) -> Float {
+            stream.map { CRIVolume.gain(level: CRIVolume.level(streamVolume: $0.volume)) } ?? 1
+        }
+
+        func gain(music index: Int) -> Float { Self.gain(table?.music.first { $0.index == index }) }
+        func gain(voice index: Int) -> Float { Self.gain(table?.voices.first { $0.index == index }) }
+
+        /// Reads and copies the stream off the main actor (music tracks are up to 17 MB).
+        func load(music index: Int) async -> ADXTrack? {
+            guard let archive = musicArchive else { return nil }
+            return try? await Task.detached(priority: .userInitiated) { try ADXTrack(archive: archive, index: index) }.value
+        }
+
+        func load(voice index: Int) async -> ADXTrack? {
+            guard let archive = voiceArchive else { return nil }
+            return try? await Task.detached(priority: .userInitiated) { try ADXTrack(archive: archive, index: index) }.value
         }
     }
 }

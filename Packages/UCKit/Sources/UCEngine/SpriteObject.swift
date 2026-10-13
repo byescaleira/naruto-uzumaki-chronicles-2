@@ -114,6 +114,13 @@ public struct SpriteObject: Sendable {
         }
     }
 
+    /// `FUN_00263c20`: the instance alpha (0x80 = opaque).
+    public mutating func setAlpha(layer id: Int, _ alpha: UInt8) { update(id) { $0.animator.color.w = alpha } }
+    /// `FUN_00263880`: the instance scale.
+    public mutating func setScale(layer id: Int, _ scale: SIMD2<Float>) { update(id) { $0.animator.scale = scale } }
+
+    public func layer(_ id: Int) -> Layer? { layers.first { $0.id == id } }
+
     public mutating func setObjectPosition(_ p: SIMD2<Int>) {
         position = p
         for i in layers.indices { place(&layers[i]) }

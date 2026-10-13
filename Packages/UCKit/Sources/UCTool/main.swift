@@ -513,6 +513,13 @@ case ("screen", "render"):
     case "menu":
         let selection = name.count > 1 ? Int(name[1]) ?? 0 : 0
         screen = TitleScreen.make(try SpriteFile(try subfileBytes(archive, TitleScreen.entry, TitleScreen.subfile)), phase: .menu(selection: selection))
+    case "modes":
+        // modes[:<selection>] — SELECT MODE after its intro frames.
+        let selection = name.count > 1 ? Int(name[1]) ?? 0 : 0
+        var menu = ModeSelectMenu(file: try SpriteFile(try subfileBytes(archive, ModeSelectScreen.entry, ModeSelectScreen.subfile)),
+                                  selection: selection)
+        for _ in 0 ..< max(8, Options(arguments.dropFirst(5)).frames) { menu.tick(InputState()) }
+        screen = menu.screen
     case "file":
         // file:<entry>/<sub-file>[:<hex animation>,…] — one layer per animation (default: animation 0).
         let path = name.count > 1 ? name[1].split(separator: "/").compactMap { Int($0) } : []
@@ -524,7 +531,7 @@ case ("screen", "render"):
         for (id, animation) in animations.enumerated() { object.add(id: id, animation: animation, bank: file.bank) }
         screen.objects = [object]
     default:
-        fail("unknown screen \(arguments[3]) (title, menu, menu:<0-2>, file:<entry>/<sub-file>[:<hex animation>,…])")
+        fail("unknown screen \(arguments[3]) (title, menu, menu:<0-2>, modes, modes:<0-10>, file:<entry>/<sub-file>[:<hex animation>,…])")
     }
     screen.tick(frames: options.frames)
     try renderPNG(screen.frame(), size: options.size, backend: options.backend, to: URL(fileURLWithPath: arguments[4]))

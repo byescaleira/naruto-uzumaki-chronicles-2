@@ -413,6 +413,36 @@ unswizzle formula in the tests.
 - Tasks: `FUN_001e7de0(update, size, order, drawOrder, flags)`; `FUN_001e7980/7970/7950` set the draw /
   update / destroy callbacks of the current task.
 
+- Title flow (state task chain, `FUN_001e7350` = next state): `FUN_001aaed0` (music, fade-in) →
+  `FUN_001aae30` (one announcer line, `0x352490`) → `FUN_001aadd0` (900-frame idle timer) →
+  `FUN_001aad00` (Start, pad bit 8 → `FUN_001aacc0` → `FUN_001aac40`: items, selection starts at 1 =
+  LOAD GAME; idle → `FUN_001aa6b0`, attract) → `FUN_001aaa90`: up/down with repeat (`FUN_001db120`),
+  decide 0x2000 → `FUN_001aaa20` (screen fade `FUN_001c4610(15)`, both channels `FUN_00129c30(ch, 15)`)
+  → `FUN_001aa970`: NEW GAME `FUN_001d71a0` + `FUN_001aa550` (`FUN_002fadc0(0xf)`, `FUN_00137a80(0xf, 0)`:
+  the story), LOAD GAME `FUN_00188c00` + memory card (`FUN_00170b80`), OPTION `0x1aa500`;
+  cancel 0x4000 → back to PRESS START.
+- Pad (`FUN_001db2a0` pressed, `FUN_001db120` repeat, libpad bits) with the decide swap on: physical
+  ✕ (0x4000) → 0x2000 "decide", ○ (0x2000) → 0x1000, △ (0x1000) → 0x4000 "cancel". Start = 8,
+  up 0x10 (| 0x10000 analog), down 0x40 (| 0x40000).
+- SELECT MODE (title module mode 1, `0040/01`): `FUN_002fcd90` (bg117 = 0x75, fade-in 15) →
+  `FUN_002fcce0`: 11 items `FUN_001aa070(i, 1, 1)`, table `{name, label animation, voice}` at
+  `0x3523e0` (STORY MODE 0xF/0x70B, KAKASHI STORY 0x2F/0x730, MISSION 0x10/0x70C, CHALLENGE 0x11/0x70D,
+  LEVEL UP 0x15/0x70E, GINOUBAKO 0x31/0x70E, ITEM SHOP 0x13/0x70F, OPTION 0x16/0x710, VS 0x12/0x711,
+  EXIT 0x18/0x712, SAVE 0x17/0x713). `FUN_001a9b90` mode 1: label held (0xC) on layer 0, a copy on layer
+  1 (priority 2) scaled 0 → 1 over 4 frames when selected; locked (`FUN_002f87b0/8760/8740/8720`) show
+  0x30 "???". `FUN_001aa1d0`: wheel around the centre of animation 0x19, offset d → `(20d, 44d)` for
+  |d| = 1 else `(20d, 40d)`, alpha 0x80 / 0x70 / 0x60, 0 for |d| = 3, hidden beyond; moves over 5 frames
+  (`FUN_00263fe0`, `FUN_00263b90`). `FUN_002fc8c0`: up/down wrap, SE 0x7F move / 0x82 locked / 0x83
+  confirm; EXIT → `FUN_002fc860` (yes/no dialog `FUN_002c3620(0xc, …)`); others → `FUN_002fc700` (fade,
+  remembered selection `DAT_00517d40`). `FUN_001a9890` plays the item's voice on channel 1 once it is
+  free. Backdrop `FUN_001a8c30` mode 1: animations 0–5, portraits (`FUN_001a9460`: 3 random unlocked
+  characters of `0x352350` `{id << 8, animation}`; a new save has 0x000 Naruto 0x1F, 0x100 Kakashi
+  0x20, 0x500 Kankuro 0x24) on layers 8, 7, 6 anchored on 0x2A / 0x2B / 0x2C, title 7, frame 9/10,
+  arrows 0xB on 0xD / 0xC on 0xE, a text window (`FUN_00272150`, font `14/0` section 1) for the
+  description from `12/3`.
+- Layers draw in insertion order within a priority (`FUN_002660a0` appends to the list).
+
 Open: the menu items' own update/draw callbacks (`0x1a9750`, `0x1aa370`, not functions in the Ghidra
-database), what each item starts, the 50 Hz vs 60 Hz tick of the 2D animations (the port ticks them at
+database), the story start (`FUN_00137a80`), the options screen (`0x1aa500`), the SELECT MODE text
+window and its `12/3` strings, the 50 Hz vs 60 Hz tick of the 2D animations (the port ticks them at
 60 Hz), the character select / versus / loading screen modules.

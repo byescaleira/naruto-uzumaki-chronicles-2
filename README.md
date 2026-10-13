@@ -35,14 +35,19 @@ Projeto em andamento. O que já existe e foi verificado:
 | **Áudio** | Decodificador CRI **ADX** em Swift puro, com as regras do próprio jogo (coeficientes, escala, histórico inicial e loop lidos como em `ADXB_DecodeHeaderAdx`). As **131 músicas** e as **2002 vozes** (inglês e japonês) decodificam inteiras, ≈ 170 milhões de amostras/s. Reprodução em streaming com `AVAudioEngine`: barramentos de música e voz, loops sem emenda, fades, sem alocação nem trava na thread de áudio. |
 | **Modelos 3D** | Formato dos modelos com esqueleto decifrado (VIF + programas de microcódigo VU1, ossos, partes e materiais): os **78 modelos** do disco, Naruto inclusive, decodificam texturizados na pose de repouso. |
 | **Vídeo** | `MV00.DSI` é MPEG-2 512×448 a 25 fps com áudio SPU ADPCM estéreo a 48 kHz, em blocos de 0x40000 bytes. A abertura (109 s) entra no pacote já em **HEVC Main10 + AAC** (25 MB, sincronia de 0 amostras) e toca com `AVPlayer`. |
-| **2D / menus** | Animações, objetos e camadas 2D reimplementados a partir dos dados do próprio jogo, com renderizador de sprites em Metal 4 e Metal clássico. **A tela de título e o menu principal** rodam exatamente como o jogo compõe, com as animações. |
-| **App** | iOS, iPadOS, macOS e tvOS, com os dados **embutidos**. Abre na **abertura**, que pode ser pulada. Depois vem a **tela de título**, com a música e o locutor que o próprio jogo usa (`FUN_001aaed0`: bg093 com fade-in e uma fala aleatória). PRESS START e BEGIN!/CONTINUE!/OPTIONS funcionam com controle, teclado, toque (tocar e deslizar) e Siri Remote. |
-| **Ainda não** | Animações dos modelos, fases, o que cada item do menu inicia, lógica de jogo e efeitos sonoros. |
+| **2D / menus** | Animações, objetos e camadas 2D reimplementados a partir dos dados do próprio jogo, com renderizador de sprites em Metal 4 e Metal clássico. **A tela de título, o menu principal e o SELECT MODE** rodam exatamente como o jogo compõe, com as animações e os fades de tela. |
+| **App** | iOS, iPadOS, macOS e tvOS, com os dados **embutidos**. Abre na **abertura**, que pode ser pulada. Depois vem a **tela de título**, com a música e o locutor que o próprio jogo usa (`FUN_001aaed0`: bg093 com fade-in e uma fala aleatória). PRESS START e BEGIN!/CONTINUE!/OPTIONS funcionam com controle, teclado, toque (tocar e deslizar) e Siri Remote. BEGIN! e CONTINUE! levam ao **SELECT MODE** (bg117, roda de 11 modos, retratos do grupo, falas do locutor para cada modo), e RETURN TO TITLE volta ao título. |
+| **Ainda não** | O modo história (no original, BEGIN! entra direto nele; aqui abre o SELECT MODE), as telas de opções e de save, os modos do SELECT MODE, animações dos modelos, fases, lógica de jogo e efeitos sonoros. |
 
 <p align="center"><img src="docs/images/title.png" alt="A tela de título do jogo rodando no app no iPhone 17 Pro" width="100%"></p>
 
 <p align="center"><sub>O menu principal rodando no app, no simulador do iPhone 17 Pro. Tudo vem dos dados do jogo: o fundo
 animado, o elenco, o logo, os itens com a seleção animada. Preenche a tela inteira, inclusive a área da Dynamic Island.</sub></p>
+
+<p align="center"><img src="docs/images/select-mode.png" alt="A tela SELECT MODE reconstruída a partir dos dados do jogo" width="100%"></p>
+
+<p align="center"><sub>SELECT MODE (<code>0040/01</code>), composto como o jogo faz: fundo animado, retratos do grupo de um save novo
+(Naruto, Kakashi e Kankuro, em ordem aleatória), a roda de modos (os bloqueados aparecem como ???) e as setas.</sub></p>
 
 | Abertura (HEVC, tela cheia) | Naruto em 3D (modelo decodificado) |
 | :---: | :---: |
@@ -140,6 +145,8 @@ Cada parte foi decifrada com o REA direto no executável. Os endereços e format
   - **Formato:** arquivos de sprites com animações, quadros e peças.
   - **Desenho:** TRIFAN com coordenadas `canto·16 + 0x8000` (`FUN_00260a40`).
   - **Tela de título:** o módulo é `FUN_001a8c30`, com 21 camadas de fundo, e `FUN_001a9b90` cria os 3 itens. Ela usa texturas de 4 bits (PSMT4), que agora decodificam.
+  - **Fluxo do título:** `FUN_001aad00` espera o Start; `FUN_001aac40` abre o menu já em LOAD GAME; `FUN_001aaa90` lê ✕ (confirma) e △ (volta); `FUN_001aaa20` escurece a tela e a música em 15 quadros; `FUN_001aa970` decide: NEW GAME começa a história (`FUN_00137a80`), LOAD GAME lê o cartão de memória, OPTION abre as opções.
+  - **SELECT MODE:** `FUN_002fcd90` toca bg117; `FUN_002fcce0` cria 11 itens da tabela `{nome, rótulo, voz}` em `0x3523e0`; `FUN_001aa1d0` monta a roda (20 px para o lado e 44/40 px para baixo por passo, alfa 0x80/0x70/0x60); `FUN_002fc8c0` lê o controle; `FUN_001a9460` sorteia os retratos entre os personagens liberados (`0x352350`).
 - **Áudio:**
   - **Formato:** tudo é CRI ADX v4, 48 kHz.
   - **Decodificação:** as fórmulas são as do próprio jogo (`FUN_0031a240`, `FUN_0031b430`), que diferem do ffmpeg em até 3761 LSB.
@@ -180,7 +187,7 @@ Scale2x para manter os contornos. O fundo é o padrão karakusa verde dos menus 
 | **Ritmo pelo tempo medido** | O jogo avança pelo tempo real, nunca pela taxa anunciada da tela ([`FramePacer`](Packages/UCKit/Sources/UCEngine/FramePacer.swift)). Perto de 60 ou 120 Hz trava no vsync (exatamente 1 tick por quadro, sem tremido de 0/2 ticks) e conta vsyncs perdidos. Em 50, 30 Hz ou taxa variável segue o relógio. Depois de uma parada (troca de modo da TV, troca de app) descarta o atraso em vez de acelerar. Os casos têm testes: ProMotion caindo para 60 Hz, vsync perdido, 50/30 Hz, parada longa. Em Debug, o log `com.byescaleira.nuc2/pacing` mostra fps real, ticks/s, CPU e GPU por quadro. |
 | **Cor** | A cena é linear BT.709. A saída converte a gama com matrizes conferidas (as linhas somam 1, então o branco continua branco). Só os realces passam do branco SDR, e eles são comprimidos por uma curva suave, sem corte seco. A margem é a EDR **atual** da tela, lida a cada quadro. No Apple TV com TV SDR o app gera sRGB, em vez de mandar PQ para o sistema converter. Em Debug, `NUC2_OUTPUT=edr\|pq\|sdr` força cada caminho. |
 | **Só paisagem, sem bordas** | Só paisagem, sem status bar nem home indicator, gestos de borda adiados e a superfície ignorando a safe area. No iPad (iPadOS 26) a orientação é travada em tempo de execução e a cena fica do tamanho da tela (`UISceneSizeRestrictions`), sem o `UIRequiresFullScreen` obsoleto. No Mac a janela entra e permanece em tela cheia. A abertura preenche a tela cortando em cima e embaixo, sem barras. |
-| **Controles** | `GameController`: DualSense e outros controles estendidos (direcional e analógico; ✕ ○ □ △, L1/R1/L2/R2, Options = Start, Create = Select), Siri Remote e teclado (WASD/setas, Enter, espaço), mapeados para os botões do DualShock 2. A barra de luz do DualSense fica laranja. No Apple TV, ○ e Options não tiram o app da tela (o UIKit os trataria como "Menu"). No iPhone, iPad e Mac, tocar ou clicar num item do menu seleciona esse item, e tocar de novo no item selecionado confirma. Deslizar para cima/baixo também move a seleção. |
+| **Controles** | `GameController`: DualSense e outros controles estendidos (direcional e analógico; ✕ ○ □ △, L1/R1/L2/R2, Options = Start, Create = Select), Siri Remote e teclado (WASD/setas, Enter, espaço), mapeados para os botões do DualShock 2. A barra de luz do DualSense fica laranja. No Apple TV, ○ e Options não tiram o app da tela (o UIKit os trataria como "Menu"). No iPhone, iPad e Mac, tocar ou clicar num item do menu seleciona esse item, e tocar de novo no item selecionado confirma (no SELECT MODE, tocar num modo gira a roda até ele, e as setas ▲▼ também funcionam). Deslizar para cima/baixo também move a seleção. △ volta do menu para PRESS START. |
 
 ## 🧰 Tecnologias
 
@@ -194,13 +201,13 @@ Scale2x para manter os contornos. O fundo é o padrão karakusa verde dos menus 
 ## 🗺️ Arquitetura
 
 ```
-App/                 app multiplataforma (um único target): fluxo abertura → título, shaders, ícones
+App/                 app multiplataforma (um único target): fluxo abertura → título → SELECT MODE, shaders, ícones
 Packages/UCKit/
   UCFormats/         CFC.DIG, ISO 9660, texturas do GS (PSMT8/PSMT4), sprites 2D, modelos (VIF/VU1),
                      AFS, ADX, tabela de streams, DSI (MPEG-2 + SPU ADPCM)
   UCAudio/           reprodução ADX em streaming (AVAudioEngine): música e voz, loops, fades
   UCRender/          renderizador Metal 4 / Metal, passe de sprites, saída HDR
-  UCEngine/          loop de 60 Hz, entrada, superfície, animação 2D, tela de título, abertura
+  UCEngine/          loop de 60 Hz, entrada, superfície, animação 2D, título e SELECT MODE, abertura
   UCTool/            uc-tool: listar, verificar e extrair os arquivos do disco
 re/                  engenharia reversa: REA (patch, daemon, consultas), notas e scripts
 docs/images/         imagens deste README, geradas pelo projeto
@@ -294,7 +301,7 @@ swift test --package-path Packages/UCKit
 
 1. Animações dos modelos: decodificar a seção de *motion* ("Mt", `FUN_001e1300`) e fazer o skinning na GPU.
 2. Renderizador 3D em Metal 4 para os modelos, e depois os cenários.
-3. O que cada item do menu inicia (BEGIN! → modo história), seleção de personagem e o fluxo do jogo.
+3. O modo história (BEGIN!), as telas de opções e de save, os modos do SELECT MODE, a seleção de personagem e o fluxo do jogo.
 4. Efeitos sonoros (módulos de síntese do IOP) e o restante da lógica de jogo, sempre com evidências do REA.
 
 ## 🍜 Créditos e aviso

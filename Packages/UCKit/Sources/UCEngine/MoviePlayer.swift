@@ -53,6 +53,11 @@ public final class MoviePlayer {
         if skippable { view.onSkip = { [weak self] in self?.skip() } }
     }
 
+    public var isMuted: Bool {
+        get { player.isMuted }
+        set { player.isMuted = newValue }
+    }
+
     /// Starts playback; `completion` runs once, on the main actor.
     public func play(completion: @escaping @MainActor (Outcome) -> Void) {
         guard self.completion == nil else { return }

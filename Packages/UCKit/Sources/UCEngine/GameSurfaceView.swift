@@ -52,7 +52,9 @@ public final class GameSurfaceView: PlatformView {
     /// through GameController instead.
     private func installPointerControls() {
         #if os(iOS)
-        addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(tapped(_:))))
+        // Taps are read from the raw touches (below): a tap recognizer gives up when the finger
+        // stays down a little long, which loses presses. A swipe cancels the touch instead.
+        isMultipleTouchEnabled = false
         for direction in [UISwipeGestureRecognizer.Direction.up, .down] {
             let swipe = UISwipeGestureRecognizer(target: self, action: #selector(swiped(_:)))
             swipe.direction = direction
@@ -64,9 +66,23 @@ public final class GameSurfaceView: PlatformView {
     }
 
     #if os(iOS)
-    @objc private func tapped(_ gesture: UITapGestureRecognizer) {
-        let point = gesture.location(in: self)
+    private var touchStart: CGPoint?
+    /// Further than this between touch-down and lift-off is a drag, not a tap.
+    private static let tapSlop: CGFloat = 24
+
+    override public func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        touchStart = touches.first?.location(in: self)
+    }
+
+    override public func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        defer { touchStart = nil }
+        guard let start = touchStart, let point = touches.first?.location(in: self),
+              hypot(point.x - start.x, point.y - start.y) <= Self.tapSlop else { return }
         runtime.tap(at: SIMD2(Float(point.x), Float(point.y)), in: SIMD2(Float(bounds.width), Float(bounds.height)))
+    }
+
+    override public func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        touchStart = nil
     }
     #elseif os(macOS)
     @objc private func tapped(_ gesture: NSClickGestureRecognizer) {

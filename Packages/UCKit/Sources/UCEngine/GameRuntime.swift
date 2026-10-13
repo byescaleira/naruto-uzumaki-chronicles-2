@@ -19,9 +19,11 @@ public final class GameRuntime {
 
     private let inputSource = InputSource()
 
-    /// The 2D title flow (PRESS START → main menu), advanced each tick and drawn by the
-    /// renderer's sprite pass. Set it once the game data is loaded (`GameData.titleSprites()`).
-    public var title: TitleMenu?
+    /// The menus (title, SELECT MODE), advanced each tick and drawn by the renderer's sprite
+    /// pass. Set it once the game data is loaded.
+    public var frontEnd: FrontEnd?
+    /// Plays what ``frontEnd`` asks for.
+    public weak var audio: (any GameAudio)?
 
     public init() {}
 
@@ -40,14 +42,14 @@ public final class GameRuntime {
     /// top-left). Mapped through the same canvas transform the sprite pass draws with, so it
     /// lands on what is under the finger on any screen shape.
     public func tap(at point: SIMD2<Float>, in size: SIMD2<Float>) {
-        guard title != nil, size.x > 0, size.y > 0 else {
+        guard frontEnd != nil, size.x > 0, size.y > 0 else {
             press([.cross, .start])
             return
         }
         let canvas = SpriteCanvas()
         let half = canvas.visibleHalfExtent(width: Int(size.x * 4), height: Int(size.y * 4))
         let normalized = point / size * 2 - 1
-        title?.tap(at: normalized * half)
+        frontEnd?.tap(at: normalized * half)
     }
 
     /// A short press from touch or a click (held for a few ticks, then released).
@@ -57,11 +59,14 @@ public final class GameRuntime {
 
     private func step() {
         tick += 1
-        title?.tick(input)
+        guard var menus = frontEnd else { return }
+        let events = menus.tick(input, voiceIdle: audio?.isVoiceIdle ?? true)
+        frontEnd = menus
+        for event in events { audio?.handle(event) }
     }
 
     public func frame(output: HDROutput) -> FrameInput {
-        FrameInput(time: time, output: output, sprites: title?.screen.frame())
+        FrameInput(time: time, output: output, sprites: frontEnd?.screen.frame())
     }
 }
 
