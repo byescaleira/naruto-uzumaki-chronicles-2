@@ -12,6 +12,7 @@
 		239B1E2E59E00ED705DEFA1D /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 6FE58A370F9B5E04CA96322D /* Localizable.xcstrings */; };
 		28924FA92D0A701A0EAF2F96 /* MacAppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6B4F77C549003FAAE3C88CB /* MacAppDelegate.swift */; };
 		2D86A09A21E773E5B1A6CF2D /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E96BDD408380AA78442475AF /* RootView.swift */; };
+		2F151C51B728C03BFC6E6A51 /* Model.metal in Sources */ = {isa = PBXBuildFile; fileRef = 9BCB35CFF9CD532A9A3B85B0 /* Model.metal */; };
 		2FE4822C063063C817FBBE49 /* GameSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AAA54BEBD7DABD1FD960B26 /* GameSession.swift */; };
 		330C7B20544C1E5AB0C1CAA6 /* GameData in Resources */ = {isa = PBXBuildFile; fileRef = 39C89FFFE1D96CC782C25BDB /* GameData */; };
 		58E03602A69B5C3434AF1459 /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = CFE0B13E13193563C0A3EDB0 /* AppIcon.icon */; platformFilters = (ios, macos, ); };
@@ -34,6 +35,7 @@
 		6FE58A370F9B5E04CA96322D /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		71726A761D6E84DAEB626D72 /* GameLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameLibrary.swift; sourceTree = "<group>"; };
 		8339E4132DBB453FDB460989 /* Frame.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = Frame.metal; sourceTree = "<group>"; };
+		9BCB35CFF9CD532A9A3B85B0 /* Model.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = Model.metal; sourceTree = "<group>"; };
 		B6B4F77C549003FAAE3C88CB /* MacAppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacAppDelegate.swift; sourceTree = "<group>"; };
 		C9F8E7678C8F8C27B26679CA /* GameScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameScreen.swift; sourceTree = "<group>"; };
 		CFE0B13E13193563C0A3EDB0 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = AppIcon.icon; sourceTree = "<group>"; };
@@ -92,6 +94,7 @@
 			isa = PBXGroup;
 			children = (
 				8339E4132DBB453FDB460989 /* Frame.metal */,
+				9BCB35CFF9CD532A9A3B85B0 /* Model.metal */,
 				5ACAFB732EC126AF42ADED7B /* Sprite.metal */,
 			);
 			path = Shaders;
@@ -246,6 +249,7 @@
 				8294D35625D6F06865248C2D /* GameScreen.swift in Sources */,
 				2FE4822C063063C817FBBE49 /* GameSession.swift in Sources */,
 				28924FA92D0A701A0EAF2F96 /* MacAppDelegate.swift in Sources */,
+				2F151C51B728C03BFC6E6A51 /* Model.metal in Sources */,
 				70B0A96628A8EB612CAC8601 /* NarutoUC2App.swift in Sources */,
 				2D86A09A21E773E5B1A6CF2D /* RootView.swift in Sources */,
 				DA9D6520A788A286431CDAC3 /* Sprite.metal in Sources */,

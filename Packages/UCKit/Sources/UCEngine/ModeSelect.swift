@@ -47,6 +47,7 @@ public enum ModeSelectScreen {
         Item(name: "EXIT", label: 0x18, voice: 0x712, unlocked: true),
         Item(name: "SAVE", label: 0x17, voice: 0x713, unlocked: true),
     ]
+    public static let story = 0
     public static let exit = 9
     public static let lockedLabel = 0x30
     public static let wheelAnchor = 0x19

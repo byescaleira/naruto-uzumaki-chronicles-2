@@ -24,6 +24,8 @@ public final class GameRuntime {
     public var frontEnd: FrontEnd?
     /// Plays what ``frontEnd`` asks for.
     public weak var audio: (any GameAudio)?
+    /// The story scene, when one runs: it takes the screen and the pad from ``frontEnd``.
+    public var story: StoryScene?
 
     public init() {}
 
@@ -42,6 +44,8 @@ public final class GameRuntime {
     /// top-left). Mapped through the same canvas transform the sprite pass draws with, so it
     /// lands on what is under the finger on any screen shape.
     public func tap(at point: SIMD2<Float>, in size: SIMD2<Float>) {
+        // Touch controls for the 3D scenes are not there yet; a tap must not act as Start.
+        guard story == nil else { return }
         guard frontEnd != nil, size.x > 0, size.y > 0 else {
             press([.cross, .start])
             return
@@ -59,6 +63,16 @@ public final class GameRuntime {
 
     private func step() {
         tick += 1
+        if var scene = story {
+            scene.tick(input)
+            story = scene
+            if scene.wantsToLeave {
+                story = nil
+                audio?.handle(.fadeOutAudio(frames: 0))
+                frontEnd?.returnToModeSelect()
+            }
+            return
+        }
         guard var menus = frontEnd else { return }
         let events = menus.tick(input, voiceIdle: audio?.isVoiceIdle ?? true)
         frontEnd = menus
@@ -66,7 +80,10 @@ public final class GameRuntime {
     }
 
     public func frame(output: HDROutput) -> FrameInput {
-        FrameInput(time: time, output: output, sprites: frontEnd?.screen.frame())
+        if let story {
+            return FrameInput(time: time, output: output, scene: story.frame())
+        }
+        return FrameInput(time: time, output: output, sprites: frontEnd?.screen.frame())
     }
 }
 

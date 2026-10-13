@@ -97,3 +97,40 @@ public enum SpriteSnapshot {
         }
     }
 }
+
+/// Off-screen render of a ``SceneFrame`` through the classic 3D pass (the tvOS path), for
+/// `uc-tool story render` and tests.
+public enum SceneSnapshot {
+    /// Linear RGBA (1.0 = SDR white), `width × height`, top row first.
+    @MainActor
+    public static func render(_ frame: SceneFrame, width: Int, height: Int, device: any MTLDevice, library: any MTLLibrary) throws -> [Float] {
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: HDRLayer.sceneFormat, width: width, height: height, mipmapped: false)
+        descriptor.usage = [.renderTarget, .shaderRead]
+        descriptor.storageMode = .shared
+        guard let target = device.makeTexture(descriptor: descriptor),
+              let depth = ScenePipelines.depthTexture(device, width: width, height: height),
+              let queue = device.makeCommandQueue(), let commands = queue.makeCommandBuffer() else {
+            throw SpriteSnapshot.Failure.unavailable("scene targets")
+        }
+        let pass = try ScenePass(device: device, library: library, slots: 1)
+        let renderPass = MTLRenderPassDescriptor()
+        renderPass.colorAttachments[0].texture = target
+        renderPass.colorAttachments[0].loadAction = .clear
+        renderPass.colorAttachments[0].clearColor = MTLClearColor(red: Double(frame.clearColor.x), green: Double(frame.clearColor.y),
+                                                                  blue: Double(frame.clearColor.z), alpha: 1)
+        renderPass.colorAttachments[0].storeAction = .store
+        renderPass.depthAttachment.texture = depth
+        renderPass.depthAttachment.loadAction = .clear
+        renderPass.depthAttachment.clearDepth = 0
+        guard let encoder = commands.makeRenderCommandEncoder(descriptor: renderPass) else { throw SpriteSnapshot.Failure.unavailable("encoder") }
+        pass.encode(frame, into: encoder, width: width, height: height, slot: 0)
+        encoder.endEncoding()
+        commands.commit()
+        commands.waitUntilCompleted()
+        var halves = [UInt16](repeating: 0, count: width * height * 4)
+        halves.withUnsafeMutableBytes { raw in
+            target.getBytes(raw.baseAddress!, bytesPerRow: width * 8, from: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0)
+        }
+        return halves.map(SpriteSnapshot.float(fromHalf:))
+    }
+}

@@ -59,6 +59,7 @@ final class GameSession: GameAudio {
             return
         }
         self.assets = assets
+        self.data = data
         runtime.audio = self
         runtime.frontEnd = FrontEnd(title: assets.title, modeSelect: assets.modeSelect)
         stage = .title
@@ -74,6 +75,7 @@ final class GameSession: GameAudio {
     // MARK: Audio
 
     @ObservationIgnored private var assets: Assets?
+    @ObservationIgnored private var data: GameData?
     /// Bumped on every music change so a slow load never starts a stale track.
     @ObservationIgnored private var musicRequest = 0
     @ObservationIgnored private var voiceLoading = false
@@ -111,6 +113,20 @@ final class GameSession: GameAudio {
         case .sound:
             // The SE banks (`FUN_0012b300`) are not decoded yet.
             break
+        case .startStory(let episode):
+            guard let data else { return }
+            Task {
+                do {
+                    let story = try await Task.detached(priority: .userInitiated) { try data.storyAssets(episode: episode) }.value
+                    runtime.story = StoryScene(assets: story)
+                    if story.area.music >= 0 { handle(.music(story.area.music, fadeInFrames: 30)) }
+                } catch {
+                    #if DEBUG
+                    Logger(subsystem: "com.byescaleira.nuc2", category: "story").error("episode \(episode): \(error)")
+                    #endif
+                    runtime.frontEnd?.returnToModeSelect()
+                }
+            }
         }
     }
 

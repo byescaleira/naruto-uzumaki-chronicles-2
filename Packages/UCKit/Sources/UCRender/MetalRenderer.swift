@@ -15,6 +15,9 @@ final class MetalRenderer: Renderer {
     private let outputPipeline: any MTLRenderPipelineState
     /// nil when the app's library has no Sprite.metal.
     private let spritePass: SpritePass?
+    /// nil when the app's library has no Model.metal.
+    private let scenePass: ScenePass?
+    private var depthTarget: (any MTLTexture)?
     private var frameIndex = 0
     private let inFlight = DispatchSemaphore(value: MetalRenderer.framesInFlight)
     private var sceneTarget: (any MTLTexture)?
@@ -32,6 +35,13 @@ final class MetalRenderer: Renderer {
         scenePipeline = try Self.pipeline(device, library, fragment: "boot_scene_fragment", format: HDRLayer.sceneFormat)
         outputPipeline = try Self.pipeline(device, library, fragment: "output_fragment", format: layer.pixelFormat)
         spritePass = try? SpritePass(device: device, library: library, format: HDRLayer.sceneFormat, slots: Self.framesInFlight)
+        scenePass = try? ScenePass(device: device, library: library, slots: Self.framesInFlight)
+    }
+
+    private func depthTexture(width: Int, height: Int) -> (any MTLTexture)? {
+        if let depth = depthTarget, depth.width == width, depth.height == height { return depth }
+        depthTarget = ScenePipelines.depthTexture(device, width: width, height: height)
+        return depthTarget
     }
 
     private static func pipeline(
@@ -91,11 +101,32 @@ final class MetalRenderer: Renderer {
         // The semaphore guarantees the GPU is done with this slot's sprite buffer.
         let slot = frameIndex % Self.framesInFlight
         frameIndex += 1
+        let world = scenePass != nil ? frame.scene : nil
+        if let world, let scenePass, let depth = depthTexture(width: scene.width, height: scene.height) {
+            let pass = MTLRenderPassDescriptor()
+            pass.colorAttachments[0].texture = scene
+            pass.colorAttachments[0].loadAction = .clear
+            pass.colorAttachments[0].clearColor = MTLClearColor(red: Double(world.clearColor.x), green: Double(world.clearColor.y),
+                                                                blue: Double(world.clearColor.z), alpha: 1)
+            pass.colorAttachments[0].storeAction = .store
+            pass.depthAttachment.texture = depth
+            pass.depthAttachment.loadAction = .clear
+            pass.depthAttachment.clearDepth = 0
+            pass.depthAttachment.storeAction = .dontCare
+            if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: pass) {
+                encoder.label = "World"
+                scenePass.encode(world, into: encoder, width: scene.width, height: scene.height, slot: slot)
+                encoder.endEncoding()
+            }
+        }
+
         let scenePass = MTLRenderPassDescriptor()
         scenePass.colorAttachments[0].texture = scene
         scenePass.colorAttachments[0].storeAction = .store
         let sprites = spritePass != nil ? frame.sprites : nil
-        if let sprites {
+        if world != nil {
+            scenePass.colorAttachments[0].loadAction = .load
+        } else if let sprites {
             scenePass.colorAttachments[0].loadAction = .clear
             scenePass.colorAttachments[0].clearColor = MTLClearColor(red: Double(sprites.clearColor.x), green: Double(sprites.clearColor.y),
                                                                      blue: Double(sprites.clearColor.z), alpha: 1)
@@ -106,6 +137,8 @@ final class MetalRenderer: Renderer {
             encoder.label = "Scene"
             if let sprites, let spritePass {
                 spritePass.encode(sprites, into: encoder, width: scene.width, height: scene.height, slot: slot)
+            } else if world != nil {
+                // The 3D layer alone.
             } else {
                 encoder.setRenderPipelineState(scenePipeline)
                 encoder.setFragmentBytes(&values, length: MemoryLayout<FrameUniforms>.stride, index: 0)

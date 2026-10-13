@@ -37,7 +37,8 @@ Projeto em andamento. O que já existe e foi verificado:
 | **Vídeo** | `MV00.DSI` é MPEG-2 512×448 a 25 fps com áudio SPU ADPCM estéreo a 48 kHz, em blocos de 0x40000 bytes. A abertura (109 s) entra no pacote já em **HEVC Main10 + AAC**, ampliada 4× pelo **Super Resolution da Apple** (2048×1792, pixels 7:6, 131 MB, sincronia de 0 amostras), e toca com `AVPlayer`. |
 | **2D / menus** | Animações, objetos e camadas 2D reimplementados a partir dos dados do próprio jogo, com renderizador de sprites em Metal 4 e Metal clássico. **A tela de título, o menu principal e o SELECT MODE** rodam exatamente como o jogo compõe, com as animações e os fades de tela. |
 | **App** | iOS, iPadOS, macOS e tvOS, com os dados **embutidos**. Abre na **abertura**, que pode ser pulada. Depois vem a **tela de título**, com a música e o locutor que o próprio jogo usa (`FUN_001aaed0`: bg093 com fade-in e uma fala aleatória). PRESS START e BEGIN!/CONTINUE!/OPTIONS funcionam com controle, teclado, toque (tocar e deslizar) e Siri Remote. BEGIN! e CONTINUE! levam ao **SELECT MODE** (bg117, roda de 11 modos, retratos do grupo, falas do locutor para cada modo), e RETURN TO TITLE volta ao título. |
-| **Ainda não** | O modo história (no original, BEGIN! entra direto nele; aqui abre o SELECT MODE), as telas de opções e de save, os modos do SELECT MODE, animações dos modelos, fases, lógica de jogo e efeitos sonoros. |
+| **Modo história (começo)** | BEGIN! e STORY seguem o caminho do jogo (`FUN_00137a80`): episódio → mapa e área (tabela `0x105` em `0013/01` e a tabela de mapas `0x3507c0`, lida do próprio executável) → cenário (`FUN_0016a1f0`). O primeiro episódio (0xF, mapa 0x37) carrega a arena com a luz pré-calculada do chão, o Naruto anda com o direcional ou o analógico, e a câmera o segue. É desenhado por uma camada 3D nova em Metal 4 / Metal, com depth invertido e mipmaps, sob o HUD 2D. Start volta ao SELECT MODE (no lugar do menu de pausa). |
+| **Ainda não** | Animações dos personagens (eles ficam na pose de repouso), colisão, os eventos e diálogos do episódio, inimigos e batalhas, o terreno dos outros mapas (variante do microcódigo dos cenários), controles por toque no 3D, as telas de opções e de save, os outros modos do SELECT MODE e os efeitos sonoros. |
 
 <p align="center"><img src="docs/images/title.png" alt="A tela de título do jogo rodando no app no iPhone 17 Pro" width="100%"></p>
 
@@ -48,6 +49,11 @@ animado, o elenco, o logo, os itens com a seleção animada. Preenche a tela int
 
 <p align="center"><sub>SELECT MODE (<code>0040/01</code>), composto como o jogo faz: fundo animado, retratos do grupo de um save novo
 (Naruto, Kakashi e Kankuro, em ordem aleatória), a roda de modos (os bloqueados aparecem como ???) e as setas.</sub></p>
+
+<p align="center"><img src="docs/images/story.png" alt="A primeira área do modo história desenhada pela camada 3D" width="100%"></p>
+
+<p align="center"><sub>A primeira área do modo história (episódio 0xF, mapa 0x37): o chão da arena com a luz pré-calculada
+nas cores dos vértices e o Naruto, ainda na pose de repouso, desenhados pela camada 3D (renderização de <code>uc-tool story render</code>).</sub></p>
 
 | Abertura (HEVC, tela cheia) | Naruto em 3D (modelo decodificado) |
 | :---: | :---: |
@@ -179,6 +185,13 @@ swift run --package-path Packages/UCKit -c release uc-tool movie convert <seu-di
 swift run --package-path Packages/UCKit -c release uc-tool screen render GameData/CFC_UK.DIG modes modes.png 3840x2160 --hd GameData
 ```
 
+Uma área da história renderizada pelo mesmo passe 3D da Apple TV (episódio em hexadecimal, depois de N quadros
+segurando o analógico):
+
+```bash
+swift run --package-path Packages/UCKit -c release uc-tool story render GameData f story.png 1920x1080 --frames 30 --stick 0,1
+```
+
 ## 🎨 Ícone
 
 <p align="center"><img src="docs/images/icon-variants.png" alt="Ícone nas variantes padrão, escura, clara e tingida" width="80%"></p>
@@ -245,8 +258,9 @@ open NarutoUC2.xcodeproj
 ### 📀 Dados do jogo embutidos
 
 O app embute uma parte do disco: `SYSTEM.CNF`, `CFC_UK.DIG`, `XA/` com as vozes em inglês e a música, e a
-abertura já convertida para HEVC + AAC em 4× (`MV/MV00.mp4`) e as texturas 2D em 4× (`HD/`, formato 3 do pacote).
-São cerca de 1,24 GB numa pasta `GameData/`. **Esses dados nunca entram neste repositório.**
+abertura já convertida para HEVC + AAC em 4× (`MV/MV00.mp4`), as texturas 2D em 4× (`HD/`) e o executável
+`SLES_550.90`, de onde o app lê as tabelas compiladas nele (formato 4 do pacote). São cerca de 1,25 GB numa pasta
+`GameData/`. **Esses dados nunca entram neste repositório.**
 
 - [`scripts/make_game_data.sh`](scripts/make_game_data.sh) gera `GameData/` a partir da sua ISO (`uc-tool pack`, uns
   35 minutos por causa do Super Resolution da abertura) e um pacote com ordem, datas e donos fixos. As partes
@@ -315,8 +329,8 @@ swift test --package-path Packages/UCKit
 
 ## 🛣️ Próximos passos
 
-1. Animações dos modelos: decodificar a seção de *motion* ("Mt", `FUN_001e1300`) e fazer o skinning na GPU.
-2. Renderizador 3D em Metal 4 para os modelos, e depois os cenários.
+1. Animações dos modelos: decodificar a seção de *motion* ("Mt", `FUN_001e1300`) e fazer o skinning na GPU (andar, correr, ficar parado).
+2. A variante do microcódigo dos cenários e objetos (terreno dos outros mapas), colisão e os eventos do episódio.
 3. O modo história (BEGIN!), as telas de opções e de save, os modos do SELECT MODE, a seleção de personagem e o fluxo do jogo.
 4. Efeitos sonoros (módulos de síntese do IOP) e o restante da lógica de jogo, sempre com evidências do REA.
 

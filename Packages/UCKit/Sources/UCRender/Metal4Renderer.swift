@@ -19,7 +19,10 @@ final class Metal4Renderer: Renderer {
     private let outputPipeline: any MTLRenderPipelineState
     /// nil when the app's library has no Sprite.metal.
     private let spritePass: Metal4SpritePass?
+    /// nil when the app's library has no Model.metal.
+    private let scenePass: Metal4ScenePass?
     private var sceneTarget: (any MTLTexture)?
+    private var depthTarget: (any MTLTexture)?
     private var frameIndex: UInt64 = 0
 
     /// Not measured on the Metal 4 path yet (would need an MTL4 counter heap).
@@ -66,6 +69,17 @@ final class Metal4Renderer: Renderer {
         outputPipeline = try Self.pipeline(compiler, library, fragment: "output_fragment", format: layer.pixelFormat)
         spritePass = try? Metal4SpritePass(device: device, compiler: compiler, library: library, format: HDRLayer.sceneFormat,
                                            slots: Self.framesInFlight, residency: residency)
+        scenePass = try? Metal4ScenePass(device: device, compiler: compiler, library: library, slots: Self.framesInFlight,
+                                         residency: residency)
+    }
+
+    private func depthTexture(width: Int, height: Int) -> (any MTLTexture)? {
+        if let depth = depthTarget, depth.width == width, depth.height == height { return depth }
+        if let old = depthTarget { residency.removeAllocation(old) }
+        depthTarget = ScenePipelines.depthTexture(device, width: width, height: height)
+        if let depth = depthTarget { residency.addAllocation(depth) }
+        residency.commit()
+        return depthTarget
     }
 
     private static func pipeline(
@@ -129,12 +143,34 @@ final class Metal4Renderer: Renderer {
         allocator.reset()
         commandBuffer.beginCommandBuffer(allocator: allocator)
 
-        // Pass 1: scene into the HDR target.
+        // Pass 1a: the 3D layer, with depth.
+        let world = scenePass != nil ? frame.scene : nil
+        if let world, let scenePass, let depth = depthTexture(width: scene.width, height: scene.height) {
+            let pass = MTL4RenderPassDescriptor()
+            pass.colorAttachments[0].texture = scene
+            pass.colorAttachments[0].loadAction = .clear
+            pass.colorAttachments[0].clearColor = MTLClearColor(red: Double(world.clearColor.x), green: Double(world.clearColor.y),
+                                                                blue: Double(world.clearColor.z), alpha: 1)
+            pass.colorAttachments[0].storeAction = .store
+            pass.depthAttachment.texture = depth
+            pass.depthAttachment.loadAction = .clear
+            pass.depthAttachment.clearDepth = 0
+            pass.depthAttachment.storeAction = .dontCare
+            if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: pass) {
+                encoder.label = "World"
+                scenePass.encode(world, into: encoder, width: scene.width, height: scene.height, slot: slot)
+                encoder.endEncoding()
+            }
+        }
+
+        // Pass 1b: 2D over it (or the boot scene) into the HDR target.
         let scenePass = MTL4RenderPassDescriptor()
         scenePass.colorAttachments[0].texture = scene
         scenePass.colorAttachments[0].storeAction = .store
         let sprites = spritePass != nil ? frame.sprites : nil
-        if let sprites {
+        if world != nil {
+            scenePass.colorAttachments[0].loadAction = .load
+        } else if let sprites {
             scenePass.colorAttachments[0].loadAction = .clear
             scenePass.colorAttachments[0].clearColor = MTLClearColor(red: Double(sprites.clearColor.x), green: Double(sprites.clearColor.y),
                                                                      blue: Double(sprites.clearColor.z), alpha: 1)
@@ -143,8 +179,14 @@ final class Metal4Renderer: Renderer {
         }
         if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: scenePass) {
             encoder.label = "Scene"
+            if world != nil {
+                // Draws after the 3D pass in the same command buffer.
+                encoder.barrier(afterQueueStages: .fragment, beforeStages: .fragment, visibilityOptions: .device)
+            }
             if let sprites, let spritePass {
                 spritePass.encode(sprites, into: encoder, width: scene.width, height: scene.height, slot: slot)
+            } else if world != nil {
+                // The 3D layer alone.
             } else {
                 encoder.setRenderPipelineState(scenePipeline)
                 encoder.setArgumentTable(argumentTable, stages: [.vertex, .fragment])

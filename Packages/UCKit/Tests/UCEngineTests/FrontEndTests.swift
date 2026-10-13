@@ -120,4 +120,17 @@ struct FrontEndTests {
         menu.tap(at: SIMD2((selected.x + selected.z) / 2, (selected.y + selected.w) / 2))
         #expect(menu.confirmed == 5)
     }
+
+    @Test("NEW GAME fades out and asks for story episode 0xF")
+    func newGame() throws {
+        var frontEnd = try makeFrontEnd()
+        _ = settle(&frontEnd)
+        _ = frontEnd.tick(pad(.start), voiceIdle: false)
+        _ = frontEnd.tick(pad(), voiceIdle: false)
+        _ = frontEnd.tick(pad(stick: SIMD2(0, 1)), voiceIdle: false)   // LOAD GAME → NEW GAME
+        _ = frontEnd.tick(pad(), voiceIdle: false)
+        _ = frontEnd.tick(pad(.cross), voiceIdle: false)
+        let events = settle(&frontEnd)
+        #expect(events.contains(.startStory(episode: EpisodeTable.newGame)))
+    }
 }

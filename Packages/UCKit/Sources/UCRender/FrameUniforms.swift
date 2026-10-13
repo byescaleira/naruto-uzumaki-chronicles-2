@@ -46,12 +46,15 @@ public struct HDROutput: Sendable, Equatable {
 public struct FrameInput: Sendable {
     public var time: Double
     public var output: HDROutput
-    /// 2D layer (menus, HUD); when set, the scene is cleared and the sprites drawn into it.
+    /// 3D layer (stages, characters), drawn first with its own depth buffer.
+    public var scene: SceneFrame?
+    /// 2D layer (menus, HUD), drawn over the 3D layer (or over a clear when there is none).
     public var sprites: SpriteFrame?
 
-    public init(time: Double, output: HDROutput, sprites: SpriteFrame? = nil) {
+    public init(time: Double, output: HDROutput, scene: SceneFrame? = nil, sprites: SpriteFrame? = nil) {
         self.time = time
         self.output = output
+        self.scene = scene
         self.sprites = sprites
     }
 }

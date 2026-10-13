@@ -492,3 +492,12 @@ atlas gets GPU-generated mipmaps. The atlas also scales each layer's coordinates
   `0508/02` (s0: 43 offsets, s1 0x1AA00 bytes) is not a model file — likely the terrain.
 - `FUN_00249cb0(map, area)` loads the party's character files (`FUN_00182180(i)`,
   `FUN_00249a70`) and episode-dependent extras (`FUN_0027ee80(n)` handles).
+
+## Port: story scene (first pass)
+
+`StoryData.swift` reads the episode table (`0013/01`) and the map table (`0x3507c0`) from the shipped
+executable (`Executable`, pack format 4); `StoryScene` binds the area's stage object like
+`FUN_0016a1f0` (`[2]`, `[3]`, `[10]`) plus the leader (`0119/00`) and runs a follow camera. Stage floors
+have no normals and carry baked lighting in their MSCAL 0x24/0x28 vertex colours (`0507/00`: a lit
+circle of radius ~60 fading to black); the GS MODULATE factor is `RGB / 0x80`, so the decoded
+`byte / 255` colours are scaled by 255/128 (the default white stays neutral). Models face −Z.

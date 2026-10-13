@@ -1,5 +1,5 @@
 # Embedded game data (private package; never committed). See scripts/fetch_game_data.sh.
 NUC2_DATA_REPO=byescaleira/naruto-uzumaki-chronicles-2-data
-NUC2_DATA_TAG=data-v3
-NUC2_DATA_ASSET=GameData-v3.tar
-NUC2_DATA_SHA256=4463dd4b534017d94dd902eb6cb4ab4e28131743c5e8d5b8c2402b9b3bac4b99
+NUC2_DATA_TAG=data-v4
+NUC2_DATA_ASSET=GameData-v4.tar
+NUC2_DATA_SHA256=be19f142f014c5440c040a076aafc2528159b55dc1f95015fef26e76a98c3f29

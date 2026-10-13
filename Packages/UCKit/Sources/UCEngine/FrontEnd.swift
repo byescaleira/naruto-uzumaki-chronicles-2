@@ -10,6 +10,8 @@ public enum FrontEndEvent: Sendable, Equatable {
     case voice(Int)
     /// A sound effect (`FUN_0012b300` id; the SE banks are not decoded yet).
     case sound(Int)
+    /// The screen is black: start story `episode` (`FUN_00137a80`; 0 = the next one of the save).
+    case startStory(episode: Int)
 }
 
 /// The app side of ``FrontEndEvent``.
@@ -47,7 +49,7 @@ public struct FrontEnd: Sendable {
     /// The title announcer waits for the fade-in and a short pause (~1.5 s).
     public static let announcerDelay = 90
 
-    private enum Destination: Sendable { case title, modeSelect }
+    private enum Destination: Sendable { case title, modeSelect, story(Int) }
     private var fade: (from: Float, to: Float, elapsed: Int)?
     private var destination: Destination?
     private var announcerIn: Int?
@@ -86,7 +88,10 @@ public struct FrontEnd: Sendable {
                 menu.confirmed = nil
                 events.append(.sound(0x83))
                 switch item {
-                case .newGame, .loadGame: leave(to: .modeSelect)
+                // NEW GAME starts episode 0xF (`FUN_001aa550`); LOAD GAME reads the card and goes on
+                // to SELECT MODE, which with no save is a new one.
+                case .newGame: leave(to: .story(EpisodeTable.newGame))
+                case .loadGame: leave(to: .modeSelect)
                 case .option: break
                 }
             }
@@ -104,6 +109,8 @@ public struct FrontEnd: Sendable {
             if let index = menu.confirmed {
                 menu.confirmed = nil
                 if index == ModeSelectScreen.exit { leave(to: .title) }
+                // STORY: the first episode not cleared yet (`FUN_002fa2a0`); a new save's is 0xF.
+                if index == ModeSelectScreen.story { leave(to: .story(0)) }
             }
             stage = .modeSelect(menu)
         }
@@ -161,7 +168,18 @@ public struct FrontEnd: Sendable {
             stage = .modeSelect(ModeSelectMenu(sheet: modeSheet, party: ModeSelectScreen.startingParty.shuffled()))
             events.append(.music(ModeSelectScreen.music, fadeInFrames: 0))
             fadeIn()
+        case .story(let episode):
+            // Stays black; the app loads the episode and hands the screen to the 3D layer.
+            events.append(.startStory(episode: episode))
         }
+    }
+
+    /// Back from a story scene: SELECT MODE fades in with its music.
+    public mutating func returnToModeSelect() {
+        destination = nil
+        stage = .modeSelect(ModeSelectMenu(sheet: modeSheet, party: ModeSelectScreen.startingParty.shuffled()))
+        events.append(.music(ModeSelectScreen.music, fadeInFrames: 0))
+        fadeIn()
     }
 
     private mutating func enterTitle() {

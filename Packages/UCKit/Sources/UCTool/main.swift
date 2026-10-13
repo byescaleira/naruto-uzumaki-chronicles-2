@@ -48,7 +48,9 @@ enum GamePack {
     /// 2: the intro movie ships converted (HEVC Main10 + AAC, `MV/MV00.mp4`) instead of `MV/MV00.DSI`.
     /// 3: Apple's super-resolution scaler at package time: the intro movie at 4× (2048×1792, 7:6
     /// pixels) and `HD/`, 4× copies of the 2D textures in ``highResolutionSprites``.
-    static let format = 3
+    /// 4: adds the executable (`SLES_550.90`): the tables compiled into it (maps, characters…)
+    /// are read from it at run time (``Executable``).
+    static let format = 4
     /// Sprite files (DIG entry, sub-file) shipped with high-resolution textures: the screens the
     /// app shows so far (title, SELECT MODE). Grows with the screens.
     static let highResolutionSprites = [(40, 0), (40, 1)]
@@ -75,7 +77,7 @@ enum GamePack {
         }
         return written
     }
-    static let files = ["SYSTEM.CNF", "CFC_UK.DIG", "XA/XA.AFS", "XA/XAVOICE.AFS"]
+    static let files = ["SYSTEM.CNF", "SLES_550.90", "CFC_UK.DIG", "XA/XA.AFS", "XA/XAVOICE.AFS"]
     static let movie = "MV/MV00.DSI"
 
     /// Copies `file` to `target` and returns its SHA-256 (hex).
@@ -172,11 +174,28 @@ struct Options {
 
 /// App/Shaders/Sprite.metal, compiled at run time (the app compiles it into default.metallib).
 @MainActor
-func spriteLibrary(_ device: any MTLDevice) throws -> any MTLLibrary {
+func spriteLibrary(_ device: any MTLDevice) throws -> any MTLLibrary { try shaderLibrary(device, "Sprite.metal") }
+
+/// One of the app's shader files compiled at run time (`NUC2_SHADERS` overrides the folder).
+func shaderLibrary(_ device: any MTLDevice, _ name: String) throws -> any MTLLibrary {
     let path = ProcessInfo.processInfo.environment["NUC2_SHADERS"].map { URL(fileURLWithPath: $0) }
         ?? URL(fileURLWithPath: #filePath).deletingLastPathComponent().appending(path: "../../../../App/Shaders")
-    let source = try String(contentsOf: path.appending(path: "Sprite.metal"), encoding: .utf8)
+    let source = try String(contentsOf: path.appending(path: name), encoding: .utf8)
     return try device.makeLibrary(source: source, options: nil)
+}
+
+/// Linear RGBA (1 = SDR white) → sRGB PNG.
+func writeLinearPNG(_ pixels: [Float], width: Int, height: Int, to url: URL) throws {
+    func encode(_ c: Float) -> UInt8 {
+        let v = min(max(c, 0), 1)
+        let s = v <= 0.0031308 ? v * 12.92 : 1.055 * powf(v, 1 / 2.4) - 0.055
+        return UInt8(min(255, max(0, (s * 255).rounded())))
+    }
+    var rgba = [UInt8](repeating: 255, count: width * height * 4)
+    for i in 0 ..< width * height {
+        rgba[i * 4] = encode(pixels[i * 4]); rgba[i * 4 + 1] = encode(pixels[i * 4 + 1]); rgba[i * 4 + 2] = encode(pixels[i * 4 + 2])
+    }
+    try writePNG(DecodedTexture(width: width, height: height, rgba: rgba), to: url)
 }
 
 /// Renders a sprite frame off-screen and writes it as an sRGB PNG (linear scene clamped to SDR white).
@@ -600,6 +619,37 @@ case ("sprite", "anims"):
                       to: out.appending(path: String(format: "%04d_%02d_a%02x.png", entryIndex, subfileIndex, animation)))
     }
     print("rendered \(file.bank.animations.count) animations")
+
+case ("story", "render"):
+    // `uc-tool story render <data-root> <episode> <out.png> [WxH] [--frames N] [--stick x,y]`: the
+    // episode's first area after N ticks of holding the stick.
+    guard arguments.count >= 5, let episode = Int(arguments[3], radix: 16) ?? Int(arguments[3]) else {
+        fail("usage: uc-tool story render <data-root> <episode (hex)> <out.png> [WxH] [--frames N] [--stick x,y]")
+    }
+    let options = Options(arguments.dropFirst(5))
+    var stick = SIMD2<Float>.zero
+    if let i = arguments.firstIndex(of: "--stick"), i + 1 < arguments.count {
+        let parts = arguments[i + 1].split(separator: ",").compactMap { Float($0) }
+        if parts.count == 2 { stick = SIMD2(parts[0], parts[1]) }
+    }
+    let data = try GameData(url: URL(fileURLWithPath: arguments[2], isDirectory: true))
+    let assets = try data.storyAssets(episode: episode)
+    print("episode \(hex(assets.episode.id)) → map \(hex(assets.episode.map)) area \(assets.episode.area): stage "
+        + assets.area.stageModels.map(\.description).joined(separator: " ") + ", music \(hex(assets.area.music))")
+    for model in assets.stage + [assets.player] {
+        print("  \(model.name): \(model.indices.count / 3) triangles, \(model.draws.count) draws, \(model.textures.count) textures, "
+            + "bounds \(model.boundsMin) … \(model.boundsMax)")
+    }
+    var scene = StoryScene(assets: assets)
+    var input = InputState()
+    input.leftStick = stick
+    for _ in 0 ..< options.frames { scene.tick(input) }
+    guard let device = MTLCreateSystemDefaultDevice() else { fail("no Metal device") }
+    let size = options.size
+    let pixels = try SceneSnapshot.render(scene.frame(), width: size.x, height: size.y, device: device,
+                                          library: try shaderLibrary(device, "Model.metal"))
+    try writeLinearPNG(pixels, width: size.x, height: size.y, to: URL(fileURLWithPath: arguments[4]))
+    print("rendered → \(arguments[4])")
 
 case ("hd", "sprites"):
     // `uc-tool hd sprites <CFC.DIG> <data-root> [entry/sub-file…]`: (re)writes `<data-root>/HD/`.
