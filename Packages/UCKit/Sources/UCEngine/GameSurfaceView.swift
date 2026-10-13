@@ -138,7 +138,45 @@ public final class GameSurfaceView: PlatformView {
         window == nil ? stop() : start()
         #if os(tvOS)
         if let window { DisplayMode.request(for: window, output: outputMode) }
+        // Take focus so the Menu / Play-Pause presses below land here (see `pressesBegan`).
+        DispatchQueue.main.async { [weak self] in
+            guard let root = self?.window?.rootViewController else { return }
+            root.setNeedsFocusUpdate()
+            root.updateFocusIfNeeded()
+        }
         #endif
+    }
+    #endif
+
+    #if os(tvOS)
+    // A controller's ○ (B) and Options (Menu) also arrive as the UIKit Menu press, which
+    // unhandled sends the app to the Home screen. The surface takes focus and swallows Menu
+    // and Play/Pause: the game reads every button through GameController (the Siri Remote's
+    // Back included), and the TV button still goes Home.
+    override public var canBecomeFocused: Bool { true }
+
+    private func passThrough(_ presses: Set<UIPress>) -> Set<UIPress> {
+        presses.filter { $0.type != .menu && $0.type != .playPause }
+    }
+
+    override public func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        let rest = passThrough(presses)
+        if !rest.isEmpty { super.pressesBegan(rest, with: event) }
+    }
+
+    override public func pressesChanged(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        let rest = passThrough(presses)
+        if !rest.isEmpty { super.pressesChanged(rest, with: event) }
+    }
+
+    override public func pressesEnded(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        let rest = passThrough(presses)
+        if !rest.isEmpty { super.pressesEnded(rest, with: event) }
+    }
+
+    override public func pressesCancelled(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        let rest = passThrough(presses)
+        if !rest.isEmpty { super.pressesCancelled(rest, with: event) }
     }
     #endif
 

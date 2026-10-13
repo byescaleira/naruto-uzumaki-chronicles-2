@@ -35,6 +35,21 @@ final class InputSource {
     private var virtualTicks = 0
     static let virtualPressTicks = 4
 
+    init() {
+        for controller in GCController.controllers() { Self.configure(controller) }
+        NotificationCenter.default.addObserver(
+            forName: .GCControllerDidConnect, object: nil, queue: .main
+        ) { note in
+            guard let controller = note.object as? GCController else { return }
+            Self.configure(controller)
+        }
+    }
+
+    /// Light bar in Naruto's orange (DualSense / DualShock 4; others have no light).
+    nonisolated private static func configure(_ controller: GCController) {
+        controller.light?.color = GCColor(red: 1.0, green: 0.42, blue: 0.0)
+    }
+
     func press(_ buttons: InputState.Buttons, stick: SIMD2<Float>) {
         virtual.buttons = buttons
         virtual.leftStick = stick
