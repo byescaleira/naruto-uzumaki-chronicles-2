@@ -649,16 +649,18 @@ case ("model", "scan"):
     try ModelTool.scan(archive: archiveURL, sheet: arguments.count > 3 ? URL(fileURLWithPath: arguments[3]) : nil)
 
 case ("model", "info"), ("model", "export"):
-    guard arguments.count >= 5, let entryIndex = Int(arguments[3]), let subfileIndex = Int(arguments[4]) else {
-        fail("usage: uc-tool model (info|export) <CFC.DIG> <entry> <subfile> [out-dir]")
+    // `<subfile>` may name nested sections: `3.2` is section 2 of sub-file 3.
+    let path = arguments.count >= 5 ? arguments[4].split(separator: ".").compactMap { Int($0) } : []
+    guard arguments.count >= 5, let entryIndex = Int(arguments[3]), let subfileIndex = path.first else {
+        fail("usage: uc-tool model (info|export) <CFC.DIG> <entry> <subfile[.section…]> [out-dir]")
     }
-    let loaded = try ModelTool.load(archive: archiveURL, entry: entryIndex, subfile: subfileIndex)
+    let loaded = try ModelTool.load(archive: archiveURL, entry: entryIndex, subfile: subfileIndex, nested: Array(path.dropFirst()))
     if arguments[1] == "info" {
         try ModelTool.info(loaded)
     } else {
         guard arguments.count >= 6 else { fail("usage: uc-tool model export <CFC.DIG> <entry> <subfile> <out-dir>") }
         try ModelTool.export(loaded, to: URL(fileURLWithPath: arguments[5], isDirectory: true),
-                             name: String(format: "%04d_%02d", entryIndex, subfileIndex))
+                             name: String(format: "%04d_%@", entryIndex, arguments[4].replacingOccurrences(of: ".", with: "_")))
     }
 
 default:

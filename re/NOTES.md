@@ -462,3 +462,33 @@ The app swaps `HD/<entry>_<sub>_t<n>.png` in for the decoded texture; texel coor
 by the original `TEX0` size, REGION_CLAMP is widened back to half a pixel of the upscaled layer, and the
 atlas gets GPU-generated mipmaps. The atlas also scales each layer's coordinates into its padded slice
 (smaller textures of a file used to be sampled as if they filled the slice).
+
+## Story mode entry (BEGIN! / SELECT MODE → STORY)
+
+- SELECT MODE STORY (`FUN_002fc8c0` case 0): `FUN_002fa2a0` picks the first story episode whose clear
+  flag (`FUN_0015d0f0(ep·10 + 0xD3)`, or `ep·3 + 0x19B` from 0x14) is unset, from the list at
+  `0x4dbb80`; `FUN_002fadc0(ep)` resets the scenario state (`DAT_0055d890` = episode). After the fade,
+  the module's callback at `0x2fc250` calls `FUN_0023a850(1)`, `FUN_0017fb30/0017fb20(0)` and
+  `FUN_00137a80(FUN_002fa6e0(), 0)`. Title NEW GAME does the same with episode 0xF (`FUN_001aa550`).
+- `FUN_00137a80(episode, mode)` starts the scene task `FUN_00137880` (0x88 bytes) → `FUN_00137720`
+  (loads handles `0x000e0000` = entry 14 and `0x00ae0000` = entry 174) → `FUN_00137320`: episode 0 means
+  0xF; the episode → (map, area) lookup is `FUN_002fa8a0` / `FUN_002fa6f0` over table 0 of `0013/01`.
+- `0013/01` is a `0x105` data table (u16 magic 0x105, u16 table count at +8, per table `u32 offset` at
+  `0x20 + 16·i`; at the offset `u16 rows`, rows start 0x14 later): 60 rows of 0x24 bytes,
+  `{u8 episode, …, u16 map @0x10, u16 area @0x12, …}`. Episode 0xF (new game) → map 0x37, area 1.
+- `FUN_0016e640/e5c0/e560/e4c0` store the next map / area / entry point / direction;
+  `FUN_00137120` makes them current (`FUN_0016e660…`) and `FUN_00165870` loads the area:
+  `DAT_003507c0[map]` = `{u32 areas, u32 count, u32 flags}`, area record 0x30 bytes of DIG handles
+  (`entry << 16 | sub-file`): `[0]` area entry, `[1]` shared stage entry (loaded with `[0]`), `[2…6]`
+  stage sub-files 0, 2–5, `[7…9]` area sub-files 0–2, `[10]` stage sub-file 1, `[11]` music (bg index,
+  `FUN_001636b0`). Map 0x37 area 1: area 508, stage 507, music 0x53.
+- Area file `0508/00`: 23 sections, read by one accessor each (`FUN_00164360…`, sections 6, 0x14,
+  0x15, 0x16…): s1 `fdfd0003` block, s3 / s4 small tables, s20 a `0x105` table, s22 `CKPD` (magic).
+- `0508/03`: 6 sections, each a 13-section object file (s0 model, s1 textures, s2 `Mt` motion, s12
+  table); s2 and s4 hold animated objects (5 bones, one part). Their only draw pass uses the program
+  the characters use for the environment overlay (MSCAL 0x5C), and the current decoder gets their
+  vertices wrong: the stage VU1 program variant is still to be recovered.
+- `0507/00` decodes (flat disc, 1236 triangles, ±210, y = 0), `0508/01` a textured sphere (sky);
+  `0508/02` (s0: 43 offsets, s1 0x1AA00 bytes) is not a model file — likely the terrain.
+- `FUN_00249cb0(map, area)` loads the party's character files (`FUN_00182180(i)`,
+  `FUN_00249a70`) and episode-dependent extras (`FUN_0027ee80(n)` handles).

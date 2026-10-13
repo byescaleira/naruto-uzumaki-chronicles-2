@@ -10,13 +10,20 @@ enum ModelTool {
         let textures: ModelTextureTable?
     }
 
-    static func load(archive url: URL, entry: Int, subfile: Int) throws -> Loaded {
+    /// `nested`: section indices to descend through first (stage object lists such as `0508/03`
+    /// hold one sectioned model file per section).
+    static func load(archive url: URL, entry: Int, subfile: Int, nested: [Int] = []) throws -> Loaded {
         let archive = try DIGArchive(url: url)
         guard entry < archive.entries.count else { fail("no entry \(entry)") }
         let data = try archive.read(archive.entries[entry])
         let table = DIGSubfileTable(data, count: Int(archive.entries[entry].subfileCount))
         guard let sub = table.subfiles.first(where: { Int($0.index) == subfile }) else { fail("no sub-file \(subfile)") }
-        guard let file = SectionedFile(Array(table.slice(sub, of: data))), let section = file.section(.model) else {
+        var bytes = Array(table.slice(sub, of: data))
+        for index in nested {
+            guard let outer = SectionedFile(bytes), let inner = outer.section(index) else { fail("no nested section \(index)") }
+            bytes = Array(inner)
+        }
+        guard let file = SectionedFile(bytes), let section = file.section(.model) else {
             fail("entry \(entry) sub-file \(subfile) is not a sectioned model file")
         }
         let model = try ModelFile(section)
@@ -109,7 +116,10 @@ enum ModelTool {
     /// Writes `model.obj`, `model.mtl`, one PNG per material and `render.png` (4 views).
     static func export(_ loaded: Loaded, to out: URL, name: String) throws {
         try FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
-        let geometry = try ModelGeometry(model: loaded.model)
+        var geometry = try ModelGeometry(model: loaded.model)
+        // Stage objects draw their only pass with the program the characters use for the
+        // environment overlay (MSCAL 0x5C); show that pass when there is no base one.
+        if geometry.meshes.isEmpty { geometry = try ModelGeometry(model: loaded.model, passes: [.environment]) }
         var textures: [Int: DecodedTexture] = [:]
         var mtl = ""
         for material in Set(geometry.meshes.compactMap(\.material)).sorted() {
